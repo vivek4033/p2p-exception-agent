@@ -1,0 +1,5 @@
+precision_threshold,classes_permitted,permitted_classes,automation_rate,n_automated,realised_precision,value_automated_eur,binding_constraint
+0.9,1,MISSING_GOODS_RECEIPT,0.055,11,1.0,16544.0,NO_EXCEPTION
+0.93,1,MISSING_GOODS_RECEIPT,0.055,11,1.0,16544.0,NO_EXCEPTION
+0.95,1,MISSING_GOODS_RECEIPT,0.055,11,1.0,16544.0,NO_EXCEPTION
+0.97,1,MISSING_GOODS_RECEIPT,0.055,11,1.0,16544.0,NO_EXCEPTION

@@ -1,0 +1,260 @@
+{
+  "72000528_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000935_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002242_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002101_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000909_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000852_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000697_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001853_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy",
+    "lookup_vendor_history"
+  ],
+  "72000849_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy",
+    "lookup_vendor_history"
+  ],
+  "72000926_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001331_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001058_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy",
+    "lookup_vendor_history"
+  ],
+  "72001881_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000914_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000113_00003": [
+    "get_invoice",
+    "lookup_goods_receipt",
+    "lookup_po",
+    "lookup_policy",
+    "lookup_vendor_history"
+  ],
+  "72000186_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy",
+    "lookup_vendor_history"
+  ],
+  "72000642_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001813_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001327_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001321_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000874_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000609_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002384_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000574_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001686_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001937_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001070_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000079_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001116_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002253_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000627_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000615_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001736_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000247_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002351_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001914_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002362_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000142_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001387_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002132_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001500_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000655_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy",
+    "lookup_vendor_history"
+  ],
+  "72001100_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001640_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000563_00003": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72002285_00002": [
+    "check_duplicate_payment",
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001898_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72000130_00001": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001174_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ],
+  "72001669_00002": [
+    "get_invoice",
+    "lookup_po",
+    "lookup_policy"
+  ]
+}

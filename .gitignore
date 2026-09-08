@@ -1,0 +1,7 @@
+venv/
+data/*.csv
+data/*.xes
+data/*.parquet
+outputs/agent_cache/
+__pycache__/
+.env
