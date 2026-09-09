@@ -10,26 +10,43 @@ paints multinational; each case is a purchase-order line item.
 
 ---
 
+## Results
+
+Generated page: `docs/index.html` — run `python run_sample.py`, or publish
+it via Settings → Pages → `main` → `/docs`. Every figure on it is read from the
+pipeline outputs; nothing is typed by hand, and the data-source stamp is printed
+at the top.
+
 ## Quickstart
 
 ```bash
-pip install pandas numpy pyarrow anthropic pm4py
-python run_all.py            # mock agent — free, proves the pipeline runs
-python run_all.py --live     # real Claude API, responses cached to disk
+pip install -r requirements.txt
+# put the BPI 2019 .xes file in data/  (see Data below)
+python GO.py            # convert, reconnoitre, run, build the dashboard
+python GO.py --live     # same, with the real Claude API agent
 ```
 
-Download the BPI Challenge 2019 XES log from [4TU.ResearchData](https://data.4tu.nl/)
-and place it at `data/BPI_Challenge_2019.xes`. Convert it before running the
-real-data pipeline:
+`GO.py` runs everything in order and stops at the first failed gate. The data
+source is auto-detected from what is on disk — there is no flag to set. Every
+output carries a stamp recording which mode ran, and the dashboard refuses to
+build from fixture data unless you pass `--force`.
+
+## Quickstart (individual steps)
 
 ```bash
+pip install -r requirements.txt
+
+# one-time: the dataset is not in this repo. Download BPI Challenge 2019 from
+# 4TU.ResearchData, then convert it (streaming, low memory):
 python xes_to_parquet.py data/BPI_Challenge_2019.xes
+
+python run_all.py            # mock agent — free, proves the pipeline runs
+python run_all.py --live     # real Claude API, responses cached to disk
+python run_sample.py         # writes the illustrative owner work queue to docs/index.html
 ```
 
-This creates `data/bpi2019.parquet`, which is intentionally ignored by Git.
-
 `src/config.py` is the only file you edit to point this at the real log. Set
-`DATA_SOURCE = "real"`, put the CSV at `data/BPI_Challenge_2019.csv`, and correct
+`DATA_SOURCE = "real"`, set `PARQUET_PATH` to the converted file, and correct
 any activity or column names that `phase0_recon.py` reports differently.
 
 Every output carries a data-source stamp. Nothing produced with
