@@ -78,16 +78,25 @@ def freeze_expected_tools(ev, path="docs/expected_tools.json", k=50):
 
 
 # --------------------------------------------------------------------- arms
-def run_arms(ev, mock=True):
+def run_arms(ev, mock=True, verbose=True):
     box = ToolBox(ev)
     rules = R.run(ev).set_index("case_id")
-    rows, trajectories = [], {}
+    rows, trajectories, failures = [], {}, []
+    total = len(ev)
 
-    for _, r in ev.iterrows():
+    for i, (_, r) in enumerate(ev.iterrows(), 1):
         cid = r["case_id"]
-        rr = rules.loc[cid]
-
-        agent_out, traj = A.investigate(cid, box, mock=mock)
+        if verbose and (i % 25 == 0 or i == 1):
+            print(f"    case {i}/{total}  {cid}", flush=True)
+        try:
+            rr = rules.loc[cid]
+            if hasattr(rr, "columns"):          # duplicate case_id in the eval set
+                rr = rr.iloc[0]
+            agent_out, traj = A.investigate(cid, box, mock=mock)
+        except Exception as exc:
+            failures.append({"case_id": cid, "error": f"{type(exc).__name__}: {exc}"})
+            print(f"    SKIPPED {cid}: {type(exc).__name__}: {exc}", flush=True)
+            continue
         trajectories[cid] = traj
 
         pol = P.decide(
@@ -129,6 +138,10 @@ def run_arms(ev, mock=True):
             "agent_reasoning": agent_out.get("reasoning"),
         })
 
+    if failures:
+        pd.DataFrame(failures).to_csv("outputs/arm_failures.csv", index=False)
+        print(f"    {len(failures)} case(s) failed — see outputs/arm_failures.csv",
+              flush=True)
     return pd.DataFrame(rows), trajectories
 
 

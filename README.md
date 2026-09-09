@@ -18,6 +18,16 @@ python run_all.py            # mock agent — free, proves the pipeline runs
 python run_all.py --live     # real Claude API, responses cached to disk
 ```
 
+Download the BPI Challenge 2019 XES log from [4TU.ResearchData](https://data.4tu.nl/)
+and place it at `data/BPI_Challenge_2019.xes`. Convert it before running the
+real-data pipeline:
+
+```bash
+python xes_to_parquet.py data/BPI_Challenge_2019.xes
+```
+
+This creates `data/bpi2019.parquet`, which is intentionally ignored by Git.
+
 `src/config.py` is the only file you edit to point this at the real log. Set
 `DATA_SOURCE = "real"`, put the CSV at `data/BPI_Challenge_2019.csv`, and correct
 any activity or column names that `phase0_recon.py` reports differently.

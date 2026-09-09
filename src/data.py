@@ -174,7 +174,7 @@ def _has_act(df, acts, index):
     return index.isin(m[C.CASE_COL].unique())
 
 
-def case_features(df):
+def case_features(df, with_variants=False):
     """
     Collapse the event log to one row per case with the fields the rules engine,
     the agent tools and the label derivation all need.
@@ -217,17 +217,48 @@ def case_features(df):
     # --- payment block timing
     blk_ts = _first_by_act(df, C.BLOCK_ACTS, C.TS_COL).reindex(out.index)
     unblk_ts = _first_by_act(df, C.UNBLOCK_ACTS, C.TS_COL).reindex(out.index)
+    # The block-set timestamp is almost never present, so anchor the resolution
+    # clock on invoice receipt instead and name the metric for what it measures.
+    anchor = blk_ts.fillna(inv_ts)
     out["block_to_resolution_days"] = (unblk_ts - blk_ts).dt.total_seconds() / 86400
+    out["invoice_to_unblock_days"] = (unblk_ts - anchor).dt.total_seconds() / 86400
 
     # --- structural flags
     idx = out.index
     out["has_gr"] = _has_act(df, C.GR_ACTS, idx)
-    out["was_blocked"] = _has_act(df, C.BLOCK_ACTS, idx)
+
+    # Was a goods receipt expected at all? Absence is only an exception if so.
+    gr_col = getattr(C, "GR_EXPECTED_COL", None)
+    if gr_col and gr_col in df.columns:
+        exp = df.groupby(C.CASE_COL)[gr_col].first().reindex(out.index)
+        out["gr_expected"] = exp.astype(str).str.lower().isin(["true", "1", "yes"])
+        out["gr_expectation_source"] = gr_col
+    else:
+        cat_col = getattr(C, "ITEM_CATEGORY_COL", None)
+        if cat_col and cat_col in df.columns:
+            cat = df.groupby(C.CASE_COL)[cat_col].first().reindex(out.index).astype(str)
+            pat = "|".join(getattr(C, "NO_GR_ITEM_CATEGORIES", []))
+            out["gr_expected"] = ~cat.str.contains(pat, case=False, na=False)
+            out["gr_expectation_source"] = cat_col
+        else:
+            out["gr_expected"] = True
+            out["gr_expectation_source"] = "assumed_true_no_field_available"
+    _set_block = _has_act(df, C.BLOCK_ACTS, idx)
+    _removed = _has_act(df, C.UNBLOCK_ACTS, idx)
+    out["was_blocked"] = ((_set_block | _removed)
+                          if getattr(C, "BLOCK_INFERRED_FROM_REMOVAL", False)
+                          else _set_block)
+    out["block_set_event_present"] = _set_block
     out["block_removed"] = _has_act(df, C.UNBLOCK_ACTS, idx)
     out["po_price_changed"] = _has_act(df, C.PRICE_CHANGE_ACTS, idx)
     out["po_qty_changed"] = _has_act(df, C.QTY_CHANGE_ACTS, idx)
     out["cancelled"] = _has_act(df, C.CANCEL_ACTS, idx)
     out["cleared"] = _has_act(df, [C.A_CLEAR_INVOICE], idx)
+
+    # Terminal state: the case reached an observable end. Non-terminal cases have
+    # no resolution to predict and are excluded from evaluation, not relabelled.
+    out["terminal"] = (out["cleared"] | out["block_removed"]
+                       | _has_act(df, C.CANCEL_ACTS, idx))
 
     ir = df[df[C.ACT_COL] == C.A_INVOICE_RECEIPT].groupby(C.CASE_COL).size()
     out["n_invoice_receipts"] = ir.reindex(out.index).fillna(0).astype(int)
@@ -245,6 +276,9 @@ def case_features(df):
         out["human_touches"] = (out["was_blocked"] | out["po_price_changed"]
                                 | out["po_qty_changed"] | out["cancelled"]).astype(int)
 
-    out["variant"] = g[C.ACT_COL].apply(lambda s: " -> ".join(s))
+    # The variant string is a groupby-apply over every event and costs minutes on
+    # the full log. Stage 1 needs it; nothing else does. Off by default.
+    if with_variants:
+        out["variant"] = g[C.ACT_COL].apply(lambda s: " -> ".join(s))
 
     return out.reset_index()

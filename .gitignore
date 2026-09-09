@@ -3,5 +3,7 @@ data/*.csv
 data/*.xes
 data/*.parquet
 outputs/agent_cache/
+outputs/
+docs/findings_log.md
 __pycache__/
 .env
