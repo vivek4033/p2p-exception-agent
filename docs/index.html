@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P2P Exception Autonomy — Results</title>
+<style>
+:root {
+  --paper:#FBFBF9; --ink:#191C1F; --muted:#5C6670; --rule:#D8D6CF;
+  --steel:#3E5566; --auto:#4F7A5C; --approve:#B0803A; --escalate:#9C4A38;
+}
+* { box-sizing:border-box }
+body {
+  margin:0; background:var(--paper); color:var(--ink);
+  font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+main { max-width:760px; margin:0 auto; padding:48px 24px 96px }
+h1 { font-size:26px; line-height:1.25; margin:0 0 6px; font-weight:600;
+      letter-spacing:-.01em }
+h2 { font-size:15px; font-weight:600; margin:52px 0 12px;
+      padding-bottom:7px; border-bottom:1px solid var(--rule) }
+p { max-width:68ch }
+.sub { color:var(--muted); margin:0 0 4px }
+.stampline { color:var(--muted); font-size:13px; margin:0 }
+.banner { background:var(--escalate); color:#fff; padding:11px 16px;
+           border-radius:2px; margin:20px 0; font-weight:600; font-size:14px }
+.hero { margin:34px 0 8px; padding:26px 28px; background:#fff;
+         border:1px solid var(--rule); border-left:4px solid var(--steel) }
+.heronum { font-size:56px; line-height:1; font-weight:600;
+            letter-spacing:-.03em; font-variant-numeric:tabular-nums }
+.herosub { margin:10px 0 0; max-width:52ch }
+.heronote { margin:12px 0 0; color:var(--muted); font-size:14px }
+.chart { width:100%; height:auto; margin:14px 0 4px }
+.line { fill:none; stroke:var(--steel); stroke-width:2.5 }
+.dot { fill:var(--steel) }
+.dotlab { fill:var(--ink); font-size:12px; text-anchor:middle;
+           font-variant-numeric:tabular-nums }
+.axlab { fill:var(--muted); font-size:11px; text-anchor:middle }
+.axlab.end { text-anchor:end }
+.axtitle { fill:var(--muted); font-size:11px }
+.grid { stroke:var(--rule); stroke-width:1 }
+table { border-collapse:collapse; width:100%; margin:8px 0 }
+.data th, .data td { text-align:left; padding:8px 10px;
+                      border-bottom:1px solid var(--rule); font-size:14px }
+.data thead th { color:var(--muted); font-weight:500 }
+.num { text-align:right; font-variant-numeric:tabular-nums }
+.below { color:var(--escalate); font-weight:600 }
+.bars th { text-align:left; font-weight:400; font-size:14px; padding:5px 10px 5px 0;
+            white-space:nowrap }
+.barcell { width:55% }
+.bar { display:block; height:11px; background:var(--steel); opacity:.72 }
+.bars .num { padding-left:12px; font-size:14px; width:1%; white-space:nowrap }
+.stack { display:flex; height:26px; margin:14px 0 12px; overflow:hidden }
+.seg.rules_sufficient { background:var(--auto) }
+.seg.ai_added_value { background:var(--steel) }
+.seg.human_necessary { background:var(--approve) }
+.key { list-style:none; padding:0; margin:0; display:flex; gap:22px;
+        flex-wrap:wrap; font-size:14px }
+.sw { display:inline-block; width:11px; height:11px; margin-right:7px }
+.sw.rules_sufficient { background:var(--auto) }
+.sw.ai_added_value { background:var(--steel) }
+.sw.human_necessary { background:var(--approve) }
+.pending { color:var(--muted); font-style:italic }
+.facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+          gap:1px; background:var(--rule); border:1px solid var(--rule);
+          margin:8px 0 }
+.fact { background:#fff; padding:14px 16px }
+.fact b { display:block; font-size:23px; font-weight:600;
+           font-variant-numeric:tabular-nums; letter-spacing:-.02em }
+.fact span { color:var(--muted); font-size:13px }
+ol.lim { max-width:68ch; padding-left:20px }
+ol.lim li { margin-bottom:9px }
+footer { margin-top:56px; padding-top:16px; border-top:1px solid var(--rule);
+          color:var(--muted); font-size:13px }
+a { color:var(--steel) }
+@media (max-width:520px) { .heronum { font-size:42px } main { padding:32px 18px 64px } }
+</style></head><body><main>
+
+<h1>Where should AI autonomy stop in procure-to-pay exception handling?</h1>
+<p class="sub">Measured on the BPI Challenge 2019 SAP procurement log</p>
+<p class="stampline">Data source: BPI Challenge 2019 (4TU.ResearchData, DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1) &middot; Generated 2026-09-09</p>
+
+
+<div class="hero">
+  <div class="heronum">6%</div>
+  <p class="herosub">of the evaluated population can be closed without a human while holding 95% precision</p>
+  <p class="heronote">The binding constraint is NO_EXCEPTION.</p>
+</div>
+
+<h2>The trade-off behind that number</h2>
+<p>Every point of precision demanded costs automation. This curve prices that
+exchange, so the threshold becomes a decision a finance owner makes rather than
+one an engineer assumes.</p>
+<svg viewBox="0 0 640 300" class="chart" role="img"
+      aria-label="Automation rate falls as required precision rises">
+      <line x1="64" y1="248.0" x2="616" y2="248.0" class="grid"/><text x="54" y="252.0" class="axlab end">0%</text><line x1="64" y1="192.0" x2="616" y2="192.0" class="grid"/><text x="54" y="196.0" class="axlab end">2%</text><line x1="64" y1="136.0" x2="616" y2="136.0" class="grid"/><text x="54" y="140.0" class="axlab end">3%</text><line x1="64" y1="80.0" x2="616" y2="80.0" class="grid"/><text x="54" y="84.0" class="axlab end">5%</text><line x1="64" y1="24.0" x2="616" y2="24.0" class="grid"/><text x="54" y="28.0" class="axlab end">6%</text>
+      <polyline points="64.0,53.2 300.6,53.2 458.3,53.2 616.0,53.2" class="line"/>
+      <circle cx="64.0" cy="53.2" r="4.5" class="dot"/><text x="64.0" y="39.2" class="dotlab">6%</text><circle cx="300.6" cy="53.2" r="4.5" class="dot"/><text x="300.6" y="39.2" class="dotlab">6%</text><circle cx="458.3" cy="53.2" r="4.5" class="dot"/><text x="458.3" y="39.2" class="dotlab">6%</text><circle cx="616.0" cy="53.2" r="4.5" class="dot"/><text x="616.0" y="39.2" class="dotlab">6%</text><text x="64.0" y="270" class="axlab">90%</text><text x="300.6" y="270" class="axlab">93%</text><text x="458.3" y="270" class="axlab">95%</text><text x="616.0" y="270" class="axlab">97%</text>
+      <text x="64" y="292" class="axtitle">Required precision</text>
+      <text x="18" y="26" class="axtitle">Automated</text>
+    </svg>
+
+<h2>Where each case ends up</h2>
+<p>Assigned mechanically. A case counts as agent value only where the rules
+could not resolve it <em>and</em> the agent did — cases both handled go to
+rules, which is deliberately conservative toward the AI.</p>
+<div class='stack'><span class='seg rules_sufficient' style='width:63.50%' title='Rules sufficient 63.5%'></span><span class='seg human_necessary' style='width:18.50%' title='Human necessary 18.5%'></span><span class='seg ai_added_value' style='width:18.00%' title='Agent added value 18.0%'></span></div><ul class='key'><li><i class='sw rules_sufficient'></i>Rules sufficient <b>63.5%</b></li><li><i class='sw human_necessary'></i>Human necessary <b>18.5%</b></li><li><i class='sw ai_added_value'></i>Agent added value <b>18.0%</b></li></ul>
+
+<h2>Precision by exception class</h2>
+<p>Any class below the 95% pilot threshold is demoted from autonomous action to
+human approval. That threshold is a design choice, not an industry standard.</p>
+<table class='data'><thead><tr><th>Exception class</th><th>Acted on</th><th>Precision</th></tr></thead><tbody><tr><th scope='row'>NO_EXCEPTION</th><td class='num'>131</td><td class='num below'>85.5%</td></tr></tbody></table>
+
+<h2>What the process looks like</h2>
+<div class="facts">
+  <div class="fact"><b>1595923</b><span>Events</span></div>
+  <div class="fact"><b>251734</b><span>PO line items</span></div>
+  <div class="fact"><b>22.22%</b><span>Payment blocked</span></div>
+  <div class="fact"><b>189462</b><span>Evaluable</span></div>
+  <div class="fact"><b>24.74%</b><span>Excluded, non-terminal</span></div>
+  <div class="fact"><b>6</b><span>Exception classes</span></div>
+</div>
+
+<h2>Exception mix</h2>
+<table class='bars'><tr><th scope='row'>NO_EXCEPTION</th><td class='barcell'><span class='bar' style='width:100.0%'></span></td><td class='num'>208,325</td></tr><tr><th scope='row'>MISSING_GOODS_RECEIPT</th><td class='barcell'><span class='bar' style='width:8.3%'></span></td><td class='num'>17,240</td></tr><tr><th scope='row'>SEQUENCE_VIOLATION_INVOICE_BEFORE_GR</th><td class='barcell'><span class='bar' style='width:7.3%'></span></td><td class='num'>15,240</td></tr><tr><th scope='row'>DUPLICATE_INVOICE_PATTERN</th><td class='barcell'><span class='bar' style='width:4.6%'></span></td><td class='num'>9,644</td></tr><tr><th scope='row'>PRICE_VARIANCE_OVER_TOLERANCE</th><td class='barcell'><span class='bar' style='width:0.6%'></span></td><td class='num'>1,261</td></tr><tr><th scope='row'>QUANTITY_VARIANCE</th><td class='barcell'><span class='bar' style='width:0.0%'></span></td><td class='num'>24</td></tr></table>
+<p>The five suppliers with the largest blocked exposure account for <b>92.7%</b> of all blocked value. Exception concentration is a supplier-management finding, not a technical one.</p>
+
+<h2>What this does not show</h2>
+<ol class="lim">
+<li>The target is what the organisation historically did, not what was
+objectively correct. The log records that a clerk released a payment block; it
+does not record whether they should have.</li>
+<li>Blocked status is inferred from block removal — SAP writes the removal
+55,839 times and the block-set event only 122. So this is conditioned on blocks
+that were eventually cleared, and resolution times are survivor-biased.</li>
+<li>Cases with no terminal outcome are excluded, not relabelled.</li>
+<li>The log carries no per-document amounts, so exceptions are structural
+rather than variance-based.</li>
+<li>Human investigation steps between system events are not recorded. They are
+modelled from standard AP practice and treated as assumption.</li>
+</ol>
+
+<footer>
+BPI Challenge 2019 — van Dongen, B.F. (2019), 4TU.ResearchData,
+DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1.
+Generated by <code>build_dashboard.py</code> from the pipeline outputs; no
+figure on this page is typed by hand.
+</footer>
+</main></body></html>
