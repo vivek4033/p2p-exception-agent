@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P2P Exception Autonomy — MVP</title>
+<style>
+:root { --ink:#182126; --muted:#5d6b72; --paper:#f5f3ed; --card:#fff; --line:#d7d8d2; --accent:#1f5f64; --warn:#9d4d32; }
+* { box-sizing:border-box } body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.5 Georgia,serif }
+main { max-width:900px; margin:auto; padding:48px 24px 80px } h1 { font-size:36px; line-height:1.1; max-width:720px }
+h2 { margin-top:44px; border-bottom:1px solid var(--line); padding-bottom:8px } p { max-width:72ch }
+.stamp,.muted { color:var(--muted); font:14px/1.4 Arial,sans-serif } .hero { background:var(--card); border-left:6px solid var(--accent); padding:24px; margin:28px 0 }
+.hero b { display:block; font:600 48px/1 Arial,sans-serif; color:var(--accent) } .facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1px; background:var(--line) }
+.fact { background:var(--card); padding:18px } .fact b { display:block; font:600 25px Arial,sans-serif } table { width:100%; border-collapse:collapse; background:var(--card); font-family:Arial,sans-serif }
+th,td { text-align:left; padding:10px; border-bottom:1px solid var(--line) } td { text-align:right } th:last-child { font-weight:400; color:var(--muted) }
+.pending { background:#fff4df; border-left:4px solid #bd7b25; padding:14px 16px; font-family:Arial,sans-serif }
+footer { margin-top:56px; color:var(--muted); font:13px Arial,sans-serif }
+</style></head><body><main>
+<p class="stamp">Data source: BPI Challenge 2019 (real parquet) · Generated from data/bpi2019.parquet</p>
+<h1>Where should AI autonomy stop in P2P exception management?</h1>
+<p>This MVP is the evidence layer: it shows what the real event log supports before making claims about agent accuracy or autonomous resolution.</p>
+<div class="hero"><b>22.22%</b><p>of PO line-item cases show an inferred payment block, based on a block-set or block-removal event.</p></div>
+<div class="facts">
+<div class="fact"><b>1,595,923</b><span>events</span></div><div class="fact"><b>251,734</b><span>PO line items</span></div>
+<div class="fact"><b>42</b><span>activities</span></div><div class="fact"><b>189,462</b><span>terminal cases</span></div>
+<div class="fact"><b>62,272</b><span>non-terminal excluded</span></div>
+</div>
+<h2>What the system can recommend now</h2>
+<p>These are deterministic activity-pattern recommendations, not measured AI outcomes. They are suitable for a rules-first review queue and a later shadow-mode experiment.</p>
+<table><thead><tr><th>Pattern</th><th>Cases</th><th>Evidence rule</th></tr></thead><tbody><tr><th>Payment block inferred</th><td>55,934</td><td>Remove Payment Block or Set Payment Block</td></tr><tr><th>Missing goods receipt</th><td>16,211</td><td>Receipt expected, but no GR event</td></tr><tr><th>Quantity-change pattern</th><td>17,590</td><td>Change Quantity event</td></tr><tr><th>Price-change pattern</th><td>11,224</td><td>Change Price event</td></tr><tr><th>Duplicate-payment pattern</th><td>9,644</td><td>Repeated invoice receipt</td></tr><tr><th>Cancelled invoice</th><td>6,471</td><td>Cancel Invoice Receipt event</td></tr></tbody></table>
+<h2>Goods-receipt decision</h2>
+<p>17,255 cases have no goods-receipt event. The log's expectation flag identifies 16,211 cases where a receipt was expected; the remaining 1,044 are treated as legitimate no-GR flows.</p>
+<h2>Most frequent activities</h2><table><thead><tr><th>Activity</th><th>Events</th></tr></thead><tbody><tr><th>Record Goods Receipt</th><td>314,097</td></tr><tr><th>Create Purchase Order Item</th><td>251,734</td></tr><tr><th>Record Invoice Receipt</th><td>228,760</td></tr><tr><th>Vendor creates invoice</th><td>219,919</td></tr><tr><th>Clear Invoice</th><td>194,393</td></tr><tr><th>Record Service Entry Sheet</th><td>164,975</td></tr><tr><th>Remove Payment Block</th><td>57,136</td></tr><tr><th>Create Purchase Requisition Item</th><td>46,592</td></tr><tr><th>Receive Order Confirmation</th><td>32,065</td></tr><tr><th>Change Quantity</th><td>21,449</td></tr><tr><th>Change Price</th><td>12,423</td></tr><tr><th>Delete Purchase Order Item</th><td>8,875</td></tr></tbody></table>
+<h2>Experiment status</h2>
+<div class="pending"><b>Three-arm accuracy and autonomy results are pending.</b><br>The value field is constant within cases, so arithmetic price variance is not used. Run the rebuilt leakage-safe experiment only after its Stage 1 feature calculation completes and reports a clean leakage check.</div>
+<footer>Limitations: blocked status is conditioned on observed block removal; non-terminal cases have no historical resolution to predict; this page demonstrates system-event investigation and does not claim AP time savings or live SAP write-back.</footer>
+</main></body></html>
