@@ -22,6 +22,10 @@ import data                 # noqa: E402
 import labels as L          # noqa: E402
 import policy_engine as P   # noqa: E402
 import evaluate as E        # noqa: E402
+import case_packet as CP    # noqa: E402
+import rules_engine as R    # noqa: E402
+import agent as AG          # noqa: E402
+from tools import ToolBox   # noqa: E402
 
 MOCK = "--live" not in sys.argv
 FINDINGS = []
@@ -59,7 +63,7 @@ def main():
 
     # ---------------------------------------------------------------- STAGE 1
     hr("STAGE 1 — Baseline and taxonomy")
-    f = data.case_features(df)
+    f = data.case_features(df, with_variants=True)
     f = L.build(f, df)
 
     log("variants", f["variant"].nunique(), 1)
@@ -72,6 +76,22 @@ def main():
     log("mean_block_to_resolution_days",
         round(float(f["block_to_resolution_days"].mean()), 2), 1)
     log("exception_classes", int(f["exception_class"].nunique()), 1)
+
+    # Stage 1 scope decision, taken on evidence and reported
+    f_all = f
+    f, excl = L.analysis_population(f)
+    for k, v in excl.items():
+        if k != "rule":
+            log(f"population_{k}", v, 1)
+    print(f"  EXCLUSION RULE: {excl['rule']}")
+    if "gr_expectation_source" in f_all.columns:
+        n_no_gr = int((~f_all["has_gr"]).sum())
+        n_exc = int((f_all["gr_expected"] & ~f_all["has_gr"]).sum())
+        log("cases_without_goods_receipt", n_no_gr, 1)
+        log("of_which_gr_was_expected", n_exc, 1)
+        log("gr_expectation_source", f_all["gr_expectation_source"].iloc[0], 1)
+        print(f"  {n_no_gr - n_exc:,} no-GR cases are legitimate no-GR flows, "
+              f"NOT exceptions")
 
     gate = L.label_coverage_report(f)
     log("label_derivable_on_blocked_pct", gate["derivable_on_blocked_pct"], 1)
@@ -177,13 +197,33 @@ def main():
         for r in FINDINGS:
             fh.write(f"| {r['stage']} | `{r['metric']}` | {r['value']} |\n")
 
+    # sample case packets — the human-facing deliverable, incl. counterparty routing
+    box = ToolBox(ev)
+    samples = []
+    for cls in [L.PRICE_OVER_TOL, L.QTY_VARIANCE, L.DUPLICATE, L.SEQUENCE_VIOLATION]:
+        sub = ev[ev["exception_class"] == cls]
+        if sub.empty:
+            continue
+        row = sub.iloc[0]
+        a, tj = AG.investigate(row["case_id"], box, mock=MOCK)
+        a["_tools"] = tj
+        rr = R.evaluate_case(row)
+        pol = P.decide(row["case_id"], a.get("exception_type") or cls, row["exposure_eur"],
+                       a.get("confidence"), bool(a.get("evidence_complete")), rr.near_miss,
+                       matrix=matrix, policy_version=version)
+        samples.append(CP.render_text(CP.build(row, a, pol, rr.trace)))
+    if samples:
+        with open("outputs/case_packets_sample.txt", "w") as fh:
+            fh.write(f"Data source: {C.stamp()}\n\n" + ("\n\n" + "#" * 72 + "\n\n").join(samples))
+        log("case_packets_generated", len(samples), 5)
+
     if C.LOADED_HOURLY_COST_EUR is None:
         print("\n  VALUE CASE NOT COMPUTED: config.LOADED_HOURLY_COST_EUR is None.")
         print("  Set it from a source you have opened. Guardrail 7 — no unopened benchmarks.")
 
     print("\nOutputs:")
     for p in sorted(os.listdir("outputs")):
-        if p.endswith((".csv", ".json")):
+        if p.endswith((".csv", ".json", ".txt")):
             print(f"  outputs/{p}")
     for p in sorted(os.listdir("docs")):
         print(f"  docs/{p}")

@@ -54,7 +54,9 @@ def classify_exception(f: pd.DataFrame) -> pd.Series:
     cls[absvar.notna() & (absvar <= C.PRICE_TOLERANCE_PCT) & (absvar > 0.001)] = PRICE_WITHIN_TOL
     cls[absvar.notna() & (absvar > C.PRICE_TOLERANCE_PCT)] = PRICE_OVER_TOL
     cls[f["po_qty_changed"] & absvar.notna() & (absvar > C.QTY_TOLERANCE_PCT)] = QTY_VARIANCE
-    cls[~f["has_gr"]] = MISSING_GR
+    # Only a MISSING_GR exception where a goods receipt was expected. Two-way
+    # match and consignment lines legitimately have none.
+    cls[f["gr_expected"] & ~f["has_gr"]] = MISSING_GR
     cls[f["invoice_before_gr"]] = SEQUENCE_VIOLATION
     cls[f["duplicate_pattern"]] = DUPLICATE
     return cls
@@ -79,6 +81,26 @@ def derive_outcome(f: pd.DataFrame) -> pd.Series:
     lab[blocked & f["block_removed"] & ~corrected] = OUT_NO_PO_CORRECTION
     lab[f["cancelled"]] = OUT_CANCELLED
     return lab
+
+
+def analysis_population(f: pd.DataFrame):
+    """
+    Split the case table into the evaluable population and the stated exclusion.
+    Returns (population, exclusion_report). Losing coverage is survivable;
+    losing label integrity is not.
+    """
+    if not getattr(C, "EXCLUDE_NON_TERMINAL_CASES", False):
+        return f, {"excluded": 0, "rule": "no exclusion applied"}
+    keep = f[f["terminal"]]
+    return keep, {
+        "total_cases": int(len(f)),
+        "evaluable_cases": int(len(keep)),
+        "excluded_non_terminal": int((~f["terminal"]).sum()),
+        "excluded_pct": round(100 * (~f["terminal"]).mean(), 2),
+        "rule": "excluded: no Clear Invoice, no Remove Payment Block and no "
+                "Cancel Invoice Receipt in the extract — in flight, deleted, or "
+                "terminating outside this log. No resolution exists to predict.",
+    }
 
 
 def label_coverage_report(f: pd.DataFrame) -> dict:

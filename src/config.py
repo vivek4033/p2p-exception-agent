@@ -53,10 +53,36 @@ A_CHANGE_APPROVAL = "Change Approval for Purchase Order"
 PRICE_CHANGE_ACTS = [A_CHANGE_PRICE]
 QTY_CHANGE_ACTS = [A_CHANGE_QUANTITY]
 BLOCK_ACTS = [A_SET_BLOCK]
+
+# BPI 2019 logs "Remove Payment Block" ~57k times but "Set Payment Block" only
+# ~124 times: SAP does not write the block-set event to this log. A block that
+# was removed must have existed, so blocked status is inferred from the removal.
+#
+# Consequence, and it goes in the limitations section: the analysis is
+# conditioned on blocks that were EVENTUALLY REMOVED. Blocks still open at the
+# end of the log are invisible, so resolution times are survivor-biased.
+BLOCK_INFERRED_FROM_REMOVAL = True
 UNBLOCK_ACTS = [A_REMOVE_BLOCK]
 INVOICE_ACTS = [A_VENDOR_INVOICE, A_INVOICE_RECEIPT, A_CLEAR_INVOICE]
 CANCEL_ACTS = [A_CANCEL_INVOICE]
 GR_ACTS = [A_GOODS_RECEIPT]
+
+# ------------------------------------------------- flow types / GR expectation
+# BPI 2019 mixes four flows. Two-way-match and some consignment lines have NO
+# goods receipt BY DESIGN. Classifying those MISSING_GOODS_RECEIPT fabricates an
+# exception class, so absence of a GR is only an exception where a GR was
+# EXPECTED. The case:Goods Receipt boolean states that expectation directly and
+# is the correct discriminator; item category is a fallback.
+GR_EXPECTED_COL = "case:Goods Receipt"
+ITEM_CATEGORY_COL = "case:Item Category"
+NO_GR_ITEM_CATEGORIES = ["2-way match", "2-way", "Consignment"]
+
+# ---------------------------------------------------- analysis population
+# ~25% of cases never reach a terminal state in the extract: still in flight,
+# deleted, or completing outside this log. They carry no resolution to predict,
+# so they are EXCLUDED from evaluation and the exclusion is reported. This is
+# the Stage 1 scope-narrowing decision, taken on evidence rather than silently.
+EXCLUDE_NON_TERMINAL_CASES = True
 
 # ------------------------------------------------------- user classification
 # Touchless rate depends on separating batch/system actors from human clerks.
