@@ -35,45 +35,42 @@ ESCALATE = "ESCALATE"
 MATRIX_V1_0 = {
     L.NO_EXCEPTION: {
         "tier": AUTO_RESOLVE,
-        "justification": "Three-way match passes. No exception to adjudicate.",
+        "justification": "No structural irregularity in the evidence available "
+                         "when the invoice arrived. An ERP already clears these.",
     },
-    L.PRICE_WITHIN_TOL: {
-        "tier": AUTO_RESOLVE,
-        "justification": "Deterministic arithmetic against a configured tolerance key. "
-                         "Near-zero error cost; an ERP already clears these.",
-    },
-    L.PRICE_OVER_TOL: {
+    L.PRIOR_AMENDMENT: {
         "tier": HUMAN_APPROVAL,
-        "justification": "Variance beyond tolerance may reflect a contractual price "
-                         "change. Clearing it without sign-off accepts a commercial "
-                         "commitment the system cannot verify.",
+        "justification": "The purchase order was amended before invoicing. That "
+                         "may reflect a contractual change the system cannot "
+                         "verify; clearing it accepts a commercial commitment.",
     },
-    L.QTY_VARIANCE: {
+    L.GR_IR_MISMATCH: {
         "tier": HUMAN_APPROVAL,
-        "justification": "Quantity variance implies a physical goods discrepancy. "
-                         "Resolution requires warehouse confirmation outside the log.",
+        "justification": "Goods receipt and invoice receipt counts disagree, "
+                         "implying a physical discrepancy. Resolution needs "
+                         "warehouse confirmation outside the log.",
     },
     L.SEQUENCE_VIOLATION: {
         "tier": HUMAN_APPROVAL,
-        "justification": "Invoice received before goods receipt breaks GR/IR "
+        "justification": "Invoice received before any goods receipt breaks GR/IR "
                          "sequencing. A control breach, not an arithmetic error.",
     },
     L.DUPLICATE: {
         "tier": ESCALATE,
-        "justification": "A false positive leaves a supplier unpaid and a false "
-                         "negative pays twice. Both failure modes are expensive and "
-                         "asymmetric; AP manager owns the call.",
+        "justification": "A false positive leaves a supplier unpaid; a false "
+                         "negative pays twice. Both failure modes are expensive "
+                         "and asymmetric. AP manager owns the call.",
     },
     L.MISSING_GR: {
         "tier": ESCALATE,
-        "justification": "Absence of a goods receipt is a policy violation, not a "
-                         "data problem. Owned by procurement, not AP.",
+        "justification": "A goods receipt was expected and none exists. A policy "
+                         "violation owned by procurement, not a data problem.",
     },
 }
 
 ROUTING = {
-    L.PRICE_OVER_TOL: "Procurement",
-    L.QTY_VARIANCE: "Warehouse / Goods Receiving",
+    L.PRIOR_AMENDMENT: "Procurement",
+    L.GR_IR_MISMATCH: "Warehouse / Goods Receiving",
     L.DUPLICATE: "AP Manager",
     L.MISSING_GR: "Procurement",
     L.SEQUENCE_VIOLATION: "AP Team Lead",
@@ -203,7 +200,6 @@ def matrix_to_markdown(matrix, version):
     lines += ["", "**Value bands (policy, not findings):**",
               f"- Autonomous action cap: EUR {C.AUTO_RESOLVE_VALUE_CAP:,.0f}",
               f"- Escalation cap: EUR {C.APPROVAL_VALUE_CAP:,.0f}",
-              f"- Price tolerance: {C.PRICE_TOLERANCE_PCT}%",
-              f"- Quantity tolerance: {C.QTY_TOLERANCE_PCT}%",
-              f"- Near-miss band: ±{C.NEAR_MISS_BAND_PCT}pp of a threshold"]
+              "- No arithmetic tolerance: this log carries no per-document "
+              "amounts, so classes are structural, not variance-based."]
     return "\n".join(lines)

@@ -20,7 +20,7 @@ SOURCE = Path(C.PARQUET_PATH)
 SAMPLE_PATH = Path("data/sample_5000.parquet")
 QUEUE_PATH = Path("outputs/sample_case_queue.csv")
 SUMMARY_PATH = Path("outputs/sample_summary.csv")
-DASHBOARD_PATH = Path("docs/sample_dashboard.html")
+DASHBOARD_PATH = Path("docs/index.html")
 
 
 def esc(value):
@@ -29,7 +29,7 @@ def esc(value):
 
 def make_sample():
     columns = [C.CASE_COL, C.ACT_COL, C.TS_COL, C.VALUE_COL,
-               C.GR_EXPECTED_COL, "case:Purchasing Document"]
+               C.GR_EXPECTED_COL, "case:Purchasing Document", C.VENDOR_COL]
     parquet = pq.ParquetFile(SOURCE)
     frames = []
     seen = []
@@ -69,8 +69,29 @@ def recommendation(row):
 
 
 def build_dashboard(queue, sample, stage):
-    display_parts = [queue[queue["decision"] == decision].head(20)
-                     for decision in [P.ESCALATE, P.HUMAN_APPROVAL, P.AUTO_RESOLVE]]
+    cost = (queue.groupby("exception_class")
+            .agg(cases=("case_id", "size"), cycle_impact_days=("cycle_days", "sum"))
+            .sort_values("cycle_impact_days", ascending=False))
+    total_impact = cost["cycle_impact_days"].sum() or 1
+    cost_rows = "".join(
+        f"<tr><th>{esc(i.replace('_', ' ').title())}</th><td>{r.cases:,}</td>"
+        f"<td>{r.cycle_impact_days:,.0f}</td><td>{100*r.cycle_impact_days/total_impact:.1f}%</td></tr>"
+        for i, r in cost.iterrows())
+    vendors = (queue.groupby("vendor", dropna=False)
+               .agg(cases=("case_id", "size"), blocked_cases=("was_blocked", "sum"),
+                    exposure_eur=("exposure_eur", "sum"))
+               .sort_values("exposure_eur", ascending=False).head(5))
+    vendor_total = queue["exposure_eur"].sum() or 1
+    vendor_share = 100 * vendors["exposure_eur"].sum() / vendor_total
+    vendor_rows = "".join(
+        f"<tr><th>{esc(i)}</th><td>{r.cases:,}</td><td>{r.blocked_cases:,}</td>"
+        f"<td>{r.exposure_eur:,.0f}</td></tr>"
+        for i, r in vendors.iterrows())
+    display_parts = []
+    for decision in [P.ESCALATE, P.HUMAN_APPROVAL, P.AUTO_RESOLVE]:
+        status_rows = queue[queue["decision"] == decision]
+        display_parts.append(status_rows.groupby("exception_class", group_keys=False)
+                             .head(4).head(20))
     display_queue = pd.concat(display_parts).reset_index(drop=True)
     rows = []
     for i, (_, row) in enumerate(display_queue.iterrows()):
@@ -94,10 +115,12 @@ def build_dashboard(queue, sample, stage):
     html_page = f"""<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
 <title>SAP Exception Work Queue - Illustrative Sample</title><style>
 body{{margin:0;background:#eef2f1;color:#182126;font:15px/1.45 Arial,sans-serif}}main{{max-width:1250px;margin:auto;padding:38px 22px 70px}}h1{{font:600 34px Georgia,serif}}h2{{margin-top:36px;border-bottom:1px solid #cfd8d5;padding-bottom:8px}}.stamp{{color:#647177;font-size:13px}}.hero{{background:#173e43;color:#f5fbf8;border-radius:12px;padding:26px 30px;margin:22px 0;box-shadow:0 8px 24px #173e4320}}.hero b{{font-size:30px;color:#b9eee0}}.facts{{display:flex;gap:10px;flex-wrap:wrap}}.fact{{background:#fff;padding:15px 20px;border:1px solid #d5dfdc;border-radius:8px;min-width:150px}}.fact b{{display:block;font-size:22px;color:#173e43}}.summary{{display:inline-flex;flex-direction:column;gap:3px;margin:18px 8px 4px 0;padding:12px 18px;border-radius:8px;background:#fff;border:1px solid #d5dfdc}}.summary strong{{font-size:25px}}.summary.ESCALATE{{border-left:5px solid #bd583d}}.summary.HUMAN_APPROVAL{{border-left:5px solid #bd8b3d}}.summary.AUTO_RESOLVE{{border-left:5px solid #398267}}.filters{{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}}.filter{{border:1px solid #b9c8c4;background:#fff;border-radius:99px;padding:9px 15px;cursor:pointer}}.filter.active{{background:#173e43;color:#fff}}table{{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #d5dfdc;border-radius:10px;overflow:hidden}}th,td{{padding:11px 12px;text-align:left;border-bottom:1px solid #e1e8e5;vertical-align:top}}th{{color:#5d6b72;font-size:12px;text-transform:uppercase;letter-spacing:.05em}}.order{{font-family:ui-monospace,monospace;color:#1f5f64;font-weight:600}}.money{{text-align:right;font-variant-numeric:tabular-nums}}.status{{display:inline-block;padding:5px 9px;border-radius:99px;font-size:12px;font-weight:700}}.status.ESCALATE{{background:#f8dfd8;color:#8b3725}}.status.HUMAN_APPROVAL{{background:#faedcf;color:#8b6420}}.status.AUTO_RESOLVE{{background:#dff1e8;color:#24634e}}.case-row{{cursor:pointer}}.case-row:hover{{background:#f2f8f5}}.detail{{display:none;background:#f7faf8}}.detail td{{padding:18px 22px;color:#42534f}}.detail-grid{{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:14px}}.detail-grid span{{display:block;color:#71827e;font-size:11px;text-transform:uppercase}}.detail-grid b{{display:block;margin-top:4px}}.note{{background:#fff4df;border-left:4px solid #bd7b25;padding:12px 15px;border-radius:5px}}
-</style></head><body><main><p class='stamp'>Illustrative sample: {len(sample):,} of 251,734 cases from {esc(SOURCE)} | Stage: {stage}</p><h1>Work queue — illustrative sample ({len(sample):,} of 251,734 cases)</h1>
+</style></head><body><main><p class='stamp'>Illustrative sample: {len(sample[C.CASE_COL].unique()):,} of 251,734 cases | {len(sample):,} events | Stage: {stage}</p><h1>Work queue — illustrative sample ({len(sample[C.CASE_COL].unique()):,} of 251,734 cases)</h1>
 <div class='hero'><b>What needs attention now?</b><p>Click any case to open its owner, decision, and next action. Filter the queue by authority status. Policy tier assignment is shown before precision demotion; the full experiment permits 7.5% automation at 90–93% precision and none at 95%.</p><p><strong>Agent mode:</strong> deterministic stand-in — not an AI result. This sample demonstrates routing and evidence presentation, not measured model performance or live SAP write-back.</p></div>
 <div class='facts'><div class='fact'><b>{len(sample):,}</b>events</div><div class='fact'><b>{len(queue):,}</b>evaluable cases</div><div class='fact'><b>{queue['exception_class'].nunique()}</b>problem classes</div></div><div>{summary}</div>
-<h2>Owner queue</h2><div class='filters'><button class='filter active' data-filter='ALL'>All cases</button><button class='filter' data-filter='ESCALATE'>Escalate</button><button class='filter' data-filter='HUMAN_APPROVAL'>Human approval</button><button class='filter' data-filter='AUTO_RESOLVE'>Auto resolve</button></div><table><thead><tr><th>SAP order ID</th><th>Problem</th><th>Decision</th><th>Owner</th><th>Recommended next action</th><th>Exposure EUR</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<h2>Cost of deviation</h2><p>Impact is ranked by case volume multiplied by observed cycle time, not by frequency alone. This is a process-impact proxy, not a cost claim.</p><table><thead><tr><th>Problem</th><th>Cases</th><th>Cycle-days impact</th><th>Share</th></tr></thead><tbody>{cost_rows}</tbody></table>
+<h2>Vendor concentration</h2><p>Vendor IDs are anonymised. Concentration is a root-cause signal for supplier management, not proof of supplier fault.</p><p><b>Top five vendor share of sample exposure:</b> {vendor_share:.1f}%</p><table><thead><tr><th>Vendor</th><th>Cases</th><th>Blocked cases</th><th>Exposure EUR</th></tr></thead><tbody>{vendor_rows}</tbody></table>
+<h2>Owner queue</h2><div class='filters'><button class='filter active' data-filter='ALL'>All cases</button><button class='filter' data-filter='ESCALATE'>Escalate</button><button class='filter' data-filter='HUMAN_APPROVAL'>Human approval</button><button class='filter' data-filter='AUTO_RESOLVE'>Auto resolve</button></div><table><thead><tr><th>Full case ID</th><th>Problem</th><th>Decision</th><th>Owner</th><th>Recommended next action</th><th>Exposure EUR</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
 <p class='note'>Showing 20 cases per status so the work mix is visible. Click a row for details. Full queue: <code>outputs/sample_case_queue.csv</code>.</p><script>document.querySelectorAll('.case-row').forEach(function(row){{row.addEventListener('click',function(){{var d=document.getElementById('detail-'+row.dataset.case);d.style.display=d.style.display==='table-row'?'none':'table-row';}});}});document.querySelectorAll('.filter').forEach(function(button){{button.addEventListener('click',function(){{document.querySelectorAll('.filter').forEach(function(x){{x.classList.remove('active');}});button.classList.add('active');var f=button.dataset.filter;document.querySelectorAll('.case-row').forEach(function(row){{var show=f==='ALL'||row.dataset.status===f;row.style.display=show?'table-row':'none';var d=document.getElementById('detail-'+row.dataset.case);if(!show)d.style.display='none';}});}});}});</script></main></body></html>"""
     DASHBOARD_PATH.parent.mkdir(exist_ok=True)
     DASHBOARD_PATH.write_text(html_page, encoding="utf-8")
@@ -112,7 +135,10 @@ def main():
     features, exclusion = L.analysis_population(features)
     queue = features.copy()
     po = sample.groupby(C.CASE_COL)["case:Purchasing Document"].first()
-    queue["sap_order_id"] = queue["case_id"].map(po).fillna(queue["case_id"])
+    queue["sap_order_id"] = queue["case_id"]
+    queue["purchasing_document"] = queue["case_id"].map(po)
+    vendor = sample.groupby(C.CASE_COL)[C.VENDOR_COL].first()
+    queue["vendor"] = queue["case_id"].map(vendor)
     decisions = queue.apply(recommendation, axis=1, result_type="expand")
     decisions.columns = ["owner", "recommendation", "decision"]
     queue = pd.concat([queue, decisions], axis=1)

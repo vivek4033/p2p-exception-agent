@@ -6,10 +6,11 @@ Purpose: find out what the data actually supports, before designing anything.
 Writes docs/activity_inventory.md and data/bpi2019.parquet.
 
 Usage:
+    python phase0_recon.py data/log.parquet          <- fastest, after conversion
     python phase0_recon.py data/BPI_Challenge_2019.xes
+    python phase0_recon.py data/log.parquet          <- fastest, after conversion
     python phase0_recon.py data/BPI_Challenge_2019.xes.gz
     python phase0_recon.py data/BPI_Challenge_2019.csv
-    python phase0_recon.py data/log.parquet
 
 Guardrail 12: the taxonomy is derived from what this script prints,
 not from the business narrative. If the output contradicts an assumption
@@ -38,9 +39,13 @@ def emit(text=""):
 
 
 def load(path):
-    """Load parquet, XES, or CSV into a flat dataframe."""
+    """Load parquet, XES or CSV into a flat dataframe with standard column names."""
     if path.endswith(".parquet"):
-        return pd.read_parquet(path)
+        df = pd.read_parquet(path)
+        if "time:timestamp" in df.columns:
+            df["time:timestamp"] = pd.to_datetime(df["time:timestamp"],
+                                                  errors="coerce", utc=True)
+        return df
 
     if path.endswith(".csv"):
         df = pd.read_csv(path, sep=None, engine="python")

@@ -11,12 +11,29 @@ with this file, recon wins.
 """
 
 # ---------------------------------------------------------------- data source
-# "synthetic" = test fixture, safe to run tonight, NEVER report these numbers.
-# "real"      = the BPI 2019 log.
-DATA_SOURCE = "real"
+# AUTO-DETECTED. If a converted log exists on disk, the pipeline uses it and
+# runs in real mode. If not, it falls back to the synthetic fixture so the
+# harness still runs. You do not need to edit anything here.
+#
+# This is deliberate: hand-editing a source flag before every run is a step that
+# gets forgotten, and forgetting it means reporting fixture numbers as findings.
+# The stamp on every output tells you which mode actually ran.
+import os as _os
 
-REAL_LOG_PATH = "data/BPI_Challenge_2019.csv"
-PARQUET_PATH = "data/bpi2019.parquet"
+_CANDIDATES = [
+    "data/bpi2019.parquet",
+    "data/log.parquet",
+    "data/BPI_Challenge_2019.parquet",
+]
+
+_found = next((p for p in _CANDIDATES if _os.path.exists(p)), None)
+
+DATA_SOURCE = "real" if _found else "synthetic"
+PARQUET_PATH = _found or "data/log.parquet"
+REAL_LOG_PATH = "data/BPI_Challenge_2019.xes"
+
+# Force a mode if you ever need to:
+#   DATA_SOURCE = "synthetic"   (ignore the real log, test the harness)
 
 # ------------------------------------------------------------- core XES columns
 CASE_COL = "case:concept:name"
@@ -108,9 +125,24 @@ RANDOM_SEED = 42
 
 # ------------------------------------------------------------------ cost model
 # Fill from an opened source before reporting. Placeholders are flagged loudly.
-LOADED_HOURLY_COST_EUR = None       # e.g. 35.0 — MUST be sourced, not guessed
+LOADED_HOURLY_COST_EUR = 25.59      # Dutch AP Analyst gross hourly benchmark; burden not included
+# Source: https://www.salaryexpert.com/salary/job/accounts-payable-analyst/netherlands
 EARLY_PAY_DISCOUNT_PCT = None       # e.g. 2.0 — from the log's payment terms if present
 INFERENCE_COST_PER_CASE_EUR = None  # measured in Stage 3, not assumed
+
+# --- assumptions for the value model. All three are ASSUMPTIONS, not evidence.
+# The event log records system events only; it does not capture how long a human
+# spent investigating. Leaving these as None is correct until each has a source
+# you have actually opened — the value model refuses to run while any is unset.
+MINUTES_PER_INVESTIGATION = 30      # base case from Nexus AP's published 15–45 min range
+MINUTES_SENSITIVITY = [15, 30, 45]  # published range, retained rather than collapsed
+# Source: https://www.nexusap.com/research/invoice-processing-time-benchmarks
+FALSE_AUTOMATION_SEVERITY = 0.15    # judgment: 15% of exposure at risk in a wrong release
+# Judgment only; no benchmark is claimed. Sensitivity bounds the assumption.
+FALSE_AUTOMATION_SEVERITY_SENSITIVITY = [0.10, 0.15, 0.25]
+                                    # risk when a payment clears wrongly, plus the
+                                    # cost of the control failure. Sensitivity-test
+                                    # this; it is the softest number in the model.
 
 
 def stamp():

@@ -324,6 +324,13 @@ figure on this page is typed by hand.
 </footer>
 </main></body></html>"""
 
+    if synthetic and "--force" not in __import__("sys").argv:
+        print("REFUSED: the last run used the synthetic fixture.")
+        print("  Publishing a page built from fixture numbers is the one mistake")
+        print("  that would be visible to everyone who opens your Pages URL.")
+        print("  Put the real log in data/ and rerun, or pass --force to preview.")
+        return
+
     with open(OUT, "w", encoding="utf-8") as fh:
         fh.write(html)
     print(f"WROTE {OUT}  ({os.path.getsize(OUT)/1024:.1f} KB)")
