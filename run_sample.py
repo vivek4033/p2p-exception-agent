@@ -20,7 +20,7 @@ SOURCE = Path(C.PARQUET_PATH)
 SAMPLE_PATH = Path("data/sample_5000.parquet")
 QUEUE_PATH = Path("outputs/sample_case_queue.csv")
 SUMMARY_PATH = Path("outputs/sample_summary.csv")
-DASHBOARD_PATH = Path("docs/index.html")
+DASHBOARD_PATH = Path("docs/sample_dashboard.html")
 
 
 def esc(value):
@@ -69,6 +69,9 @@ def recommendation(row):
 
 
 def build_dashboard(queue, sample, stage):
+    queue = queue.copy()
+    queue["priority_score"] = (queue["exposure_eur"].fillna(0)
+                                * queue["cycle_days"].fillna(0))
     cost = (queue.groupby("exception_class")
             .agg(cases=("case_id", "size"), cycle_impact_days=("cycle_days", "sum"))
             .sort_values("cycle_impact_days", ascending=False))
@@ -103,8 +106,10 @@ def build_dashboard(queue, sample, stage):
             f"<td class='order'>{esc(row['sap_order_id'])}</td><td>{problem}</td>"
             f"<td><span class='status {esc(decision)}'>{status}</span></td>"
             f"<td>{esc(row['owner'])}</td><td>{esc(row['recommendation'])}</td>"
-            f"<td class='money'>{float(row['exposure_eur']):,.0f}</td></tr>"
-            f"<tr class='detail' id='detail-{i}'><td colspan='6'><div class='detail-grid'>"
+            f"<td class='money'>{float(row['exposure_eur']):,.0f}</td>"
+            f"<td class='money'>{float(row['cycle_days']):,.1f} days</td>"
+            f"<td class='money'>{float(row['priority_score']):,.0f}</td></tr>"
+            f"<tr class='detail' id='detail-{i}'><td colspan='8'><div class='detail-grid'>"
             f"<div><span>Problem</span><b>{problem}</b></div><div><span>Owner</span><b>{esc(row['owner'])}</b></div>"
             f"<div><span>Decision</span><b>{status}</b></div><div><span>Next action</span><b>{esc(row['recommendation'])}</b></div>"
             f"</div><p><b>Evidence:</b> prefix activity evidence from the SAP event log. "
@@ -120,7 +125,7 @@ body{{margin:0;background:#eef2f1;color:#182126;font:15px/1.45 Arial,sans-serif}
 <div class='facts'><div class='fact'><b>{len(sample):,}</b>events</div><div class='fact'><b>{len(queue):,}</b>evaluable cases</div><div class='fact'><b>{queue['exception_class'].nunique()}</b>problem classes</div></div><div>{summary}</div>
 <h2>Cost of deviation</h2><p>Impact is ranked by case volume multiplied by observed cycle time, not by frequency alone. This is a process-impact proxy, not a cost claim.</p><table><thead><tr><th>Problem</th><th>Cases</th><th>Cycle-days impact</th><th>Share</th></tr></thead><tbody>{cost_rows}</tbody></table>
 <h2>Vendor concentration</h2><p>Vendor IDs are anonymised. Concentration is a root-cause signal for supplier management, not proof of supplier fault.</p><p><b>Top five vendor share of sample exposure:</b> {vendor_share:.1f}%</p><table><thead><tr><th>Vendor</th><th>Cases</th><th>Blocked cases</th><th>Exposure EUR</th></tr></thead><tbody>{vendor_rows}</tbody></table>
-<h2>Owner queue</h2><div class='filters'><button class='filter active' data-filter='ALL'>All cases</button><button class='filter' data-filter='ESCALATE'>Escalate</button><button class='filter' data-filter='HUMAN_APPROVAL'>Human approval</button><button class='filter' data-filter='AUTO_RESOLVE'>Auto resolve</button></div><table><thead><tr><th>Full case ID</th><th>Problem</th><th>Decision</th><th>Owner</th><th>Recommended next action</th><th>Exposure EUR</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<h2>Owner queue</h2><p>Act-first ordering uses observed exposure multiplied by observed case cycle time. It is a process-priority proxy, not payment-term urgency or a cost claim.</p><div class='filters'><button class='filter active' data-filter='ALL'>All cases</button><button class='filter' data-filter='ESCALATE'>Escalate</button><button class='filter' data-filter='HUMAN_APPROVAL'>Human approval</button><button class='filter' data-filter='AUTO_RESOLVE'>Auto resolve</button></div><table><thead><tr><th>Full case ID</th><th>Problem</th><th>Decision</th><th>Owner</th><th>Recommended next action</th><th>Exposure EUR</th><th>Cycle days</th><th>Priority score EUR-days</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
 <p class='note'>Showing 20 cases per status so the work mix is visible. Click a row for details. Full queue: <code>outputs/sample_case_queue.csv</code>.</p><script>document.querySelectorAll('.case-row').forEach(function(row){{row.addEventListener('click',function(){{var d=document.getElementById('detail-'+row.dataset.case);d.style.display=d.style.display==='table-row'?'none':'table-row';}});}});document.querySelectorAll('.filter').forEach(function(button){{button.addEventListener('click',function(){{document.querySelectorAll('.filter').forEach(function(x){{x.classList.remove('active');}});button.classList.add('active');var f=button.dataset.filter;document.querySelectorAll('.case-row').forEach(function(row){{var show=f==='ALL'||row.dataset.status===f;row.style.display=show?'table-row':'none';var d=document.getElementById('detail-'+row.dataset.case);if(!show)d.style.display='none';}});}});}});</script></main></body></html>"""
     DASHBOARD_PATH.parent.mkdir(exist_ok=True)
     DASHBOARD_PATH.write_text(html_page, encoding="utf-8")
@@ -142,7 +147,9 @@ def main():
     decisions = queue.apply(recommendation, axis=1, result_type="expand")
     decisions.columns = ["owner", "recommendation", "decision"]
     queue = pd.concat([queue, decisions], axis=1)
-    queue = queue.sort_values(["decision", "exposure_eur"], ascending=[True, False])
+    queue["priority_score"] = (queue["exposure_eur"].fillna(0)
+                                * queue["cycle_days"].fillna(0))
+    queue = queue.sort_values(["decision", "priority_score"], ascending=[True, False])
     QUEUE_PATH.parent.mkdir(exist_ok=True)
     queue.to_csv(QUEUE_PATH, index=False)
     SUMMARY_PATH.write_text(pd.DataFrame([{
