@@ -53,6 +53,17 @@ Every output carries a data-source stamp. Nothing produced with
 `DATA_SOURCE = "synthetic"` may be reported — the fixture exists to test the
 harness, not to generate findings.
 
+After a validated run, build the self-contained results page:
+
+```bash
+python build_dashboard.py
+```
+
+This writes `docs/index.html`, which can be opened locally or published with
+GitHub Pages from `main` and `/docs`. The page reads its figures from the CSVs
+under `outputs/`; it does not contain hand-entered results. Do not publish the
+page until the taxonomy and value-field diagnostics have been reviewed.
+
 ---
 
 ## Architecture
@@ -81,10 +92,10 @@ The agent can be completely confident and completely correct and still not be
 permitted to act. Permission is a function of exception class and transaction
 value, set outside the model. Confidence is not authority.
 
-This is functionally an SAP release strategy applied to a non-human actor —
-value-band approvals and segregation of duties are a deterministic table of
-thresholds configured outside the transaction. The same control pattern, applied
-to an agent.
+I designed it using a release-strategy-like control pattern: value bands and
+segregation of duties are a deterministic authority table configured outside
+the transaction. This is an architectural correspondence, not a claim that
+SAP documents define an agent-authority pattern.
 
 ### Evidence hierarchy
 
@@ -95,6 +106,26 @@ to an agent.
    external lookup cannot be evaluated on real cases
 
 Nothing sourced outside the ERP can clear a payment.
+
+### The output loop
+
+The pipeline has three output paths. A deterministic rule can produce an
+`AUTO_RESOLVE` decision only where the policy engine permits it. That is the
+single path that could eventually write back to SAP: release the payment block
+using the case ID, authorising policy version, and audit record, analogous to
+the API equivalent of an MRBR action. The implementation is a design target,
+not a live SAP integration.
+
+Agent investigation and human-approval decisions write no SAP transaction.
+They produce a case packet for a work queue, including evidence, missing
+information, recommendation, confidence, and the reason authority was not
+granted. A pilot should begin in shadow mode, measure disagreements, and grant
+autonomy per exception class only where observed precision supports it.
+
+The dashboard is a view of the measured outputs, not a write-back channel.
+It demonstrates system-event investigation; it does not measure AP time
+reduction. Any value case must therefore be a scenario model with assumptions
+labelled separately from measured log facts.
 
 ---
 
@@ -139,3 +170,25 @@ Nothing sourced outside the ERP can clear a payment.
 Process layer, not configuration layer. No SAP system was configured; no
 tolerance key was set in SPRO. What this does is read a P2P process, find where
 it breaks, and put a number on it.
+
+## Interview spine
+
+The single question is: **where should AI autonomy stop in P2P exception
+management?** The data reconnaissance, taxonomy, rules baseline, agent arm,
+policy engine, disagreement review, and dashboard all exist to answer that
+question. They are not separate product features.
+
+### Questions to prepare
+
+**Q11 — Where does the output go?**
+
+Only a policy-approved `AUTO_RESOLVE` path could write a payment-block release
+back to SAP. Investigation and approval paths produce human work-queue packets
+and write nothing autonomously.
+
+**Q12 — Can I see it?**
+
+Run `python build_dashboard.py` after a validated pipeline run and open
+`docs/index.html`, or publish `/docs` with GitHub Pages. The page shows the
+autonomy boundary, sensitivity curve, case buckets, precision, process facts,
+exception mix, and limitations with the data-source stamp visible.
