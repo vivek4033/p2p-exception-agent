@@ -1,4 +1,5 @@
-"""verify.py — independent check of the real-data run.
+"""
+verify.py — independent check of the real-data run.
 
 Does not trust the pipeline's own audit. Reads the log directly and answers
 four questions:

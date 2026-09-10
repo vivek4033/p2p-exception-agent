@@ -43,57 +43,48 @@ class RuleResult:
 
 
 def _near(value, threshold):
-    if value is None or threshold is None or (isinstance(value, float) and np.isnan(value)):
-        return False
-    return abs(abs(value) - threshold) <= C.NEAR_MISS_BAND_PCT
+    return False   # no arithmetic tolerance is computable in this log
 
 
 def evaluate_case(row) -> RuleResult:
+    """
+    Deterministic checks on PREFIX evidence only. Models the ERP's existing
+    automation: a clean three-way match clears; anything structurally irregular
+    stops and waits for a human. The size of that residual is the finding.
+    """
     trace = []
-    absvar = row["abs_variance_pct"]
-    absvar = None if (absvar is None or (isinstance(absvar, float) and np.isnan(absvar))) else float(absvar)
     cls = row["exception_class"]
 
-    # ---- R1 duplicate pattern: control breach, deterministic detection,
-    #      but resolution is not deterministic (a duplicate may be legitimate
-    #      re-invoicing). Detect, do not decide.
-    if row["duplicate_pattern"]:
-        trace.append("R1 duplicate_pattern=True -> detected, not resolvable by rule")
-        return RuleResult(row["case_id"], None, False, cls, absvar, None, False, trace)
-
-    # ---- R2 sequence violation: GR/IR ordering breach
-    if row["invoice_before_gr"]:
-        trace.append("R2 invoice_before_gr=True -> sequence violation, not rule-resolvable")
-        return RuleResult(row["case_id"], None, False, cls, absvar, None, False, trace)
-
-    # ---- R3 missing goods receipt: policy violation, not a data problem
-    if not row["has_gr"]:
-        trace.append("R3 has_gr=False -> missing GR, escalation class")
-        return RuleResult(row["case_id"], None, False, cls, absvar, None, False, trace)
-
-    # ---- R4 no variance computable
-    if absvar is None:
-        trace.append("R4 variance not computable -> cannot settle")
+    if cls == L.DUPLICATE:
+        trace.append("R1 repeated invoice receipt before anchor -> control breach, "
+                     "detected but not resolvable by rule")
         return RuleResult(row["case_id"], None, False, cls, None, None, False, trace)
 
-    # ---- R5 within tolerance: the three-way match passes, no block expected
-    if absvar <= C.PRICE_TOLERANCE_PCT:
-        nm = _near(absvar, C.PRICE_TOLERANCE_PCT)
-        trace.append(f"R5 |variance|={absvar:.3f}% <= tolerance {C.PRICE_TOLERANCE_PCT}% "
-                     f"-> predict {L.OUT_AUTO_CLEARED}")
-        if nm:
-            trace.append("near_miss: within the boundary band")
-        return RuleResult(row["case_id"], L.OUT_AUTO_CLEARED, True, cls,
-                          absvar, C.PRICE_TOLERANCE_PCT, nm, trace)
+    if cls == L.SEQUENCE_VIOLATION:
+        trace.append("R2 invoice receipt precedes goods receipt -> GR/IR sequencing "
+                     "breach, not rule-resolvable")
+        return RuleResult(row["case_id"], None, False, cls, None, None, False, trace)
 
-    # ---- R6 over tolerance: a block is expected, but WHICH resolution path the
-    #      company took is not deterministic. This is precisely the residual the
-    #      agent is tested on.
-    nm = _near(absvar, C.PRICE_TOLERANCE_PCT)
-    trace.append(f"R6 |variance|={absvar:.3f}% > tolerance {C.PRICE_TOLERANCE_PCT}% "
-                 f"-> block expected; resolution path not deterministic")
-    return RuleResult(row["case_id"], None, False, cls, absvar,
-                      C.PRICE_TOLERANCE_PCT, nm, trace)
+    if cls == L.MISSING_GR:
+        trace.append("R3 goods receipt expected but absent -> policy violation, "
+                     "escalation class")
+        return RuleResult(row["case_id"], None, False, cls, None, None, False, trace)
+
+    if cls == L.GR_IR_MISMATCH:
+        n_gr, n_ir = int(row["pre_n_gr"]), int(row["pre_n_ir"])
+        trace.append(f"R4 goods receipts={n_gr} invoice receipts={n_ir} -> count "
+                     f"mismatch; resolution path not deterministic")
+        return RuleResult(row["case_id"], None, False, cls, None, None, False, trace)
+
+    if cls == L.PRIOR_AMENDMENT:
+        trace.append("R5 purchase order amended before the invoice arrived -> "
+                     "commercial change, resolution path not deterministic")
+        return RuleResult(row["case_id"], None, False, cls, None, None, False, trace)
+
+    trace.append("R6 no structural irregularity in the prefix -> "
+                 f"predict {L.OUT_AUTO_CLEARED}")
+    return RuleResult(row["case_id"], L.OUT_AUTO_CLEARED, True, cls,
+                      None, None, False, trace)
 
 
 def run(f):

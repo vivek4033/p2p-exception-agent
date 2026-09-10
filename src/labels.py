@@ -23,64 +23,83 @@ import pandas as pd
 import config as C
 
 # ---------------------------------------------------------------- exception classes
+# Derived from ACTIVITY PATTERNS visible in the prefix — the evidence a clerk
+# has at the moment the invoice arrives. Not from computed price variance:
+# Cumulative net worth (EUR) is constant within a case in this log, so no
+# arithmetic three-way match is possible. Guardrail 12 — the data decided this.
 NO_EXCEPTION = "NO_EXCEPTION"
-PRICE_WITHIN_TOL = "PRICE_VARIANCE_WITHIN_TOLERANCE"
-PRICE_OVER_TOL = "PRICE_VARIANCE_OVER_TOLERANCE"
-QTY_VARIANCE = "QUANTITY_VARIANCE"
-SEQUENCE_VIOLATION = "SEQUENCE_VIOLATION_INVOICE_BEFORE_GR"
-DUPLICATE = "DUPLICATE_INVOICE_PATTERN"
 MISSING_GR = "MISSING_GOODS_RECEIPT"
+SEQUENCE_VIOLATION = "SEQUENCE_VIOLATION_INVOICE_BEFORE_GR"
+DUPLICATE = "DUPLICATE_INVOICE_RECEIPT_PATTERN"
+GR_IR_MISMATCH = "GR_IR_COUNT_MISMATCH"
+PRIOR_AMENDMENT = "PRIOR_PO_AMENDMENT"
 
-# ------------------------------------------------------- historical outcome labels
+# ------------------------------------------------- historically observed outcomes
+# Derived from the SUFFIX only — what happened after the invoice landed.
 OUT_AUTO_CLEARED = "CLEARED_WITHOUT_BLOCK"
-OUT_PO_CORRECTION = "RESOLVED_WITH_OBSERVED_PO_CORRECTION"
-OUT_NO_PO_CORRECTION = "RESOLVED_WITHOUT_OBSERVED_PO_CORRECTION"
+OUT_PRICE_CORRECTION = "RESOLVED_WITH_PRICE_CORRECTION"
+OUT_QTY_CORRECTION = "RESOLVED_WITH_QUANTITY_CORRECTION"
+OUT_NO_CORRECTION = "RESOLVED_WITHOUT_OBSERVED_CORRECTION"
 OUT_CANCELLED = "INVOICE_CANCELLED"
 OUT_UNRESOLVED = "UNRESOLVED_IN_LOG"
+
+# retained so older references do not break
+OUT_PO_CORRECTION = OUT_PRICE_CORRECTION
+OUT_NO_PO_CORRECTION = OUT_NO_CORRECTION
+PRICE_WITHIN_TOL = NO_EXCEPTION
+PRICE_OVER_TOL = PRIOR_AMENDMENT
+QTY_VARIANCE = GR_IR_MISMATCH
 
 
 def classify_exception(f: pd.DataFrame) -> pd.Series:
     """
-    Assign one exception class per case. Order matters: the first matching
-    condition wins, most-specific first. Ordering rationale is documented in
-    docs/exception_taxonomy.md and is a defensible design choice, not an
-    arbitrary one — duplicates and sequence violations are control breaches,
-    so they outrank an arithmetic variance on the same case.
+    PREFIX ONLY. Every field read here must have existed at the anchor moment.
+    Reading a suffix field would make the feature the target.
+
+    Order: least specific first, overwritten by more specific. Control breaches
+    (duplicates, sequence) outrank counting mismatches on the same case.
     """
     cls = pd.Series(NO_EXCEPTION, index=f.index, dtype=object)
-    absvar = f["abs_variance_pct"]
-
-    # least specific first, overwritten by later rules
-    cls[absvar.notna() & (absvar <= C.PRICE_TOLERANCE_PCT) & (absvar > 0.001)] = PRICE_WITHIN_TOL
-    cls[absvar.notna() & (absvar > C.PRICE_TOLERANCE_PCT)] = PRICE_OVER_TOL
-    cls[f["po_qty_changed"] & absvar.notna() & (absvar > C.QTY_TOLERANCE_PCT)] = QTY_VARIANCE
-    # Only a MISSING_GR exception where a goods receipt was expected. Two-way
-    # match and consignment lines legitimately have none.
-    cls[f["gr_expected"] & ~f["has_gr"]] = MISSING_GR
+    cls[f["pre_price_change"] | f["pre_qty_change"]] = PRIOR_AMENDMENT
+    cls[f["gr_ir_count_mismatch"]] = GR_IR_MISMATCH
+    cls[f["gr_expected"] & ~f["pre_has_gr"]] = MISSING_GR
     cls[f["invoice_before_gr"]] = SEQUENCE_VIOLATION
-    cls[f["duplicate_pattern"]] = DUPLICATE
+    cls[f["pre_duplicate_ir"]] = DUPLICATE
     return cls
 
 
 def derive_outcome(f: pd.DataFrame) -> pd.Series:
     """
-    What the company historically did. Derived only from downstream events.
+    SUFFIX ONLY. What the company historically did after the invoice arrived.
 
-    RESOLVED_WITHOUT_OBSERVED_PO_CORRECTION records the ABSENCE of an amendment
-    event. It does not mean the invoice was correct and it does not assign fault
-    — that distinction is the reason for the wording, and it is the wording used
-    in the deck.
+    RESOLVED_WITHOUT_OBSERVED_CORRECTION records the ABSENCE of an amendment
+    event. It does not mean the invoice was correct and it assigns no fault.
     """
     lab = pd.Series(OUT_UNRESOLVED, index=f.index, dtype=object)
-
     lab[~f["was_blocked"] & f["cleared"]] = OUT_AUTO_CLEARED
 
-    blocked = f["was_blocked"]
-    corrected = f["po_price_changed"] | f["po_qty_changed"]
-    lab[blocked & f["block_removed"] & corrected] = OUT_PO_CORRECTION
-    lab[blocked & f["block_removed"] & ~corrected] = OUT_NO_PO_CORRECTION
-    lab[f["cancelled"]] = OUT_CANCELLED
+    resolved = f["was_blocked"] & f["block_removed"]
+    lab[resolved] = OUT_NO_CORRECTION
+    lab[resolved & f["post_qty_change"]] = OUT_QTY_CORRECTION
+    lab[resolved & f["post_price_change"]] = OUT_PRICE_CORRECTION
+    lab[f["post_cancelled"] | f["cancelled"]] = OUT_CANCELLED
     return lab
+
+
+def leakage_check(f: pd.DataFrame) -> dict:
+    """
+    Guards the split. Any exception class that maps almost perfectly onto one
+    outcome label is leakage, and the number would be meaningless.
+    """
+    ct = pd.crosstab(f["exception_class"], f["outcome_label"], normalize="index")
+    worst = ct.max(axis=1).sort_values(ascending=False)
+    return {
+        "max_class_to_label_concentration": round(float(worst.iloc[0]), 4),
+        "class": worst.index[0],
+        "leak_suspected": bool(worst.iloc[0] > 0.98),
+        "note": "a class resolving to one label >98% of the time indicates the "
+                "feature and the target are the same event",
+    }
 
 
 def analysis_population(f: pd.DataFrame):
@@ -129,6 +148,25 @@ def audit_taxonomy(df_events: pd.DataFrame) -> dict:
     not exist.
     """
     present = set(df_events[C.ACT_COL].unique())
+    configured = {
+        "A_CREATE_PO": C.A_CREATE_PO, "A_GOODS_RECEIPT": C.A_GOODS_RECEIPT,
+        "A_VENDOR_INVOICE": C.A_VENDOR_INVOICE, "A_INVOICE_RECEIPT": C.A_INVOICE_RECEIPT,
+        "A_CLEAR_INVOICE": C.A_CLEAR_INVOICE, "A_REMOVE_BLOCK": C.A_REMOVE_BLOCK,
+        "A_SET_BLOCK": C.A_SET_BLOCK, "A_CHANGE_PRICE": C.A_CHANGE_PRICE,
+        "A_CHANGE_QUANTITY": C.A_CHANGE_QUANTITY, "A_CANCEL_INVOICE": C.A_CANCEL_INVOICE,
+    }
+    missing = {k: v for k, v in configured.items() if v not in present}
+    return {
+        "activities_in_log": len(present),
+        "configured_not_found": missing,
+        "action_required": ("Correct these names in src/config.py from the Stage 0 "
+                            "activity inventory before trusting any class counts."
+                            if missing else "All configured activities present."),
+    }
+
+
+def audit_taxonomy_names(present) -> dict:
+    """Audit configured activities from a streaming set of activity names."""
     configured = {
         "A_CREATE_PO": C.A_CREATE_PO, "A_GOODS_RECEIPT": C.A_GOODS_RECEIPT,
         "A_VENDOR_INVOICE": C.A_VENDOR_INVOICE, "A_INVOICE_RECEIPT": C.A_INVOICE_RECEIPT,

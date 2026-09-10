@@ -2,8 +2,9 @@ venv/
 data/*.csv
 data/*.xes
 data/*.parquet
-outputs/agent_cache/
+data/.case_features.csv
 outputs/
-docs/findings_log.md
+*.log
+*.err
 __pycache__/
 .env

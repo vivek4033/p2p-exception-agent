@@ -41,8 +41,7 @@ class ToolBox:
             "n_cases": g.size(),
             "n_blocked": g["was_blocked"].sum(),
             "block_rate": g["was_blocked"].mean(),
-            "mean_abs_variance_pct": g["abs_variance_pct"].mean(),
-            "po_correction_rate": g["po_price_changed"].mean(),
+            "correction_rate": g["post_price_change"].mean(),
             "total_exposure_eur": g["exposure_eur"].sum(),
         })
 
@@ -51,43 +50,49 @@ class ToolBox:
         r = self.cases.loc[case_id]
         return {
             "case_id": case_id,
-            "invoice_value_eur": _f(r["invoice_value"]),
-            "n_invoice_receipts": int(r["n_invoice_receipts"]),
+            "exposure_eur": _f(r["exposure_eur"]),
+            "n_invoice_receipts": int(r["pre_n_ir"]),
+            "repeated_receipt_pattern": bool(r["pre_duplicate_ir"]),
             "invoice_received_before_goods_receipt": bool(r["invoice_before_gr"]),
-            "invoice_cancelled": bool(r["cancelled"]),
-            "payment_blocked": bool(r["was_blocked"]),
+            "goods_receipt_present": bool(r["pre_has_gr"]),
         }
 
     def lookup_po(self, case_id):
         r = self.cases.loc[case_id]
         return {
             "case_id": case_id,
-            "po_value_eur": _f(r["po_value"]),
+            "net_worth_eur": _f(r["exposure_eur"]),
             "item_type": r.get("item_type"),
             "spend_area": r.get("spend_area"),
-            "po_price_changed_after_creation": bool(r["po_price_changed"]),
-            "po_quantity_changed_after_creation": bool(r["po_qty_changed"]),
-            "price_variance_pct_invoice_vs_po": _f(r["price_variance_pct"]),
+            "goods_receipt_count": int(r["pre_n_gr"]),
+            "invoice_receipt_count": int(r["pre_n_ir"]),
+            "gr_ir_count_mismatch": bool(r["gr_ir_count_mismatch"]),
+            "po_amended_before_invoice": bool(r["pre_price_change"]
+                                              or r["pre_qty_change"]),
+            "goods_receipt_expected": bool(r["gr_expected"]),
+            "note": "This log carries no per-document amounts. Net worth is a "
+                    "case-level value used for exposure banding only.",
         }
 
     def lookup_goods_receipt(self, case_id):
         r = self.cases.loc[case_id]
         return {
             "case_id": case_id,
-            "goods_receipt_recorded": bool(r["has_gr"]),
-            "goods_receipt_value_eur": _f(r["gr_value"]),
+            "goods_receipt_recorded": bool(r["pre_has_gr"]),
+            "goods_receipt_count": int(r["pre_n_gr"]),
+            "goods_receipt_expected": bool(r["gr_expected"]),
             "sequence_ok_gr_before_invoice": not bool(r["invoice_before_gr"]),
         }
 
     # -------------------------------------------------------- L3: internal history
     def check_duplicate_payment(self, case_id):
         r = self.cases.loc[case_id]
-        n = int(r["n_invoice_receipts"])
+        n = int(r["pre_n_ir"])
         return {
             "case_id": case_id,
             "invoice_receipt_events": n,
             "repeated_receipt_pattern": n > 1,
-            "cancellation_present": bool(r["cancelled"]),
+            "goods_receipt_count": int(r["pre_n_gr"]),
             "note": ("Detects repeated invoice-receipt and cancellation patterns. "
                      "The log carries no invoice document identifier, so this "
                      "cannot confirm a duplicate document — only a repeated "
@@ -109,8 +114,7 @@ class ToolBox:
             "vendor_case_count": int(s["n_cases"]),
             "vendor_block_rate": round(float(s["block_rate"]), 4),
             "population_block_rate": round(float(pop), 4),
-            "vendor_mean_abs_variance_pct": _f(s["mean_abs_variance_pct"]),
-            "vendor_po_correction_rate": round(float(s["po_correction_rate"]), 4),
+            "vendor_correction_rate": round(float(s["correction_rate"]), 4),
             "elevated_vs_population": bool(s["block_rate"] > 1.5 * pop),
             "note": "Vendor identifiers are anonymised. Pattern evidence only; "
                     "no external verification is possible.",

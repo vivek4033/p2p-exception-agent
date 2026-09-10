@@ -10,6 +10,7 @@ mistaken for reportable ones.
 """
 
 import json
+import gc
 import os
 import sys
 
@@ -22,6 +23,7 @@ import data                 # noqa: E402
 import labels as L          # noqa: E402
 import policy_engine as P   # noqa: E402
 import evaluate as E        # noqa: E402
+import value_model as V     # noqa: E402
 import case_packet as CP    # noqa: E402
 import rules_engine as R    # noqa: E402
 import agent as AG          # noqa: E402
@@ -52,23 +54,34 @@ def main():
 
     # ---------------------------------------------------------------- STAGE 0
     hr("STAGE 0 — Reconnaissance")
-    df = data.load_log()
-    log("events", len(df), 0)
-    log("cases", df[C.CASE_COL].nunique(), 0)
-    log("distinct_activities", df[C.ACT_COL].nunique(), 0)
-    audit = L.audit_taxonomy(df)
+    if C.DATA_SOURCE != "synthetic" and os.path.exists(C.PARQUET_PATH):
+        n_events, n_cases, n_activities, activity_names = data.parquet_stage0(C.PARQUET_PATH)
+        log("events", n_events, 0)
+        log("cases", n_cases, 0)
+        log("distinct_activities", n_activities, 0)
+        audit = L.audit_taxonomy_names(activity_names)
+        df = None
+    else:
+        df = data.load_log()
+        log("events", len(df), 0)
+        log("cases", df[C.CASE_COL].nunique(), 0)
+        log("distinct_activities", df[C.ACT_COL].nunique(), 0)
+        audit = L.audit_taxonomy(df)
     print(f"  taxonomy audit: {audit['action_required']}")
     if audit["configured_not_found"]:
         print(f"  MISSING ACTIVITY NAMES: {audit['configured_not_found']}")
 
     # ---------------------------------------------------------------- STAGE 1
     hr("STAGE 1 — Baseline and taxonomy")
-    f = data.case_features(df, with_variants=True)
-    f = L.build(f, df)
+    del df
+    gc.collect()
+    f = data.case_features(None, with_variants=False)
+    f = L.build(f, None)
 
-    log("variants", f["variant"].nunique(), 1)
-    log("top5_variant_coverage_pct", round(100 * f["variant"].value_counts()
-                                           .head(5).sum() / len(f), 2), 1)
+    if "variant" in f.columns:
+        log("variants", f["variant"].nunique(), 1)
+        log("top5_variant_coverage_pct", round(100 * f["variant"].value_counts()
+                                               .head(5).sum() / len(f), 2), 1)
     log("touchless_rate_pct", round(100 * (f["human_touches"] == 0).mean(), 2), 1)
     log("blocked_rate_pct", round(100 * f["was_blocked"].mean(), 2), 1)
     log("mean_cycle_days", round(float(f["cycle_days"].mean()), 2), 1)
@@ -92,6 +105,18 @@ def main():
         log("gr_expectation_source", f_all["gr_expectation_source"].iloc[0], 1)
         print(f"  {n_no_gr - n_exc:,} no-GR cases are legitimate no-GR flows, "
               f"NOT exceptions")
+        # sanity check: is gr_expected real, or is it mirroring the events?
+        ct = pd.crosstab(f_all["gr_expected"], [f_all["has_gr"], f_all["terminal"]])
+        print("\n  GR EXPECTATION SANITY CHECK  (rows: gr_expected)")
+        print("  columns: has_gr / terminal")
+        print("  " + ct.to_string().replace("\n", "\n  "))
+        print("  If the gr_expected=False row is ~identical to the has_gr=False")
+        print("  column, the field mirrors the events and is circular — say so.")
+
+    leak = L.leakage_check(f)
+    log("max_class_to_label_concentration", leak["max_class_to_label_concentration"], 1)
+    print(f"  LEAKAGE CHECK: {'SUSPECTED — investigate' if leak['leak_suspected'] else 'clean'}"
+          f" (worst class: {leak['class']})")
 
     gate = L.label_coverage_report(f)
     log("label_derivable_on_blocked_pct", gate["derivable_on_blocked_pct"], 1)
@@ -217,9 +242,8 @@ def main():
             fh.write(f"Data source: {C.stamp()}\n\n" + ("\n\n" + "#" * 72 + "\n\n").join(samples))
         log("case_packets_generated", len(samples), 5)
 
-    if C.LOADED_HOURLY_COST_EUR is None:
-        print("\n  VALUE CASE NOT COMPUTED: config.LOADED_HOURLY_COST_EUR is None.")
-        print("  Set it from a source you have opened. Guardrail 7 — no unopened benchmarks.")
+    hr("STAGE 5 — Business case")
+    V.run(res, sens)
 
     print("\nOutputs:")
     for p in sorted(os.listdir("outputs")):
