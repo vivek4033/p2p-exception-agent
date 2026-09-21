@@ -90,7 +90,10 @@ agent on everything would make it impossible to say what the AI was worth.
 
 The agent can be completely confident and completely correct and still not be
 permitted to act. Permission is a function of exception class and transaction
-value, set outside the model. Confidence is not authority.
+value, set outside the model. The model's confidence is logged and calibration-
+tested only; it is not authority. Authority comes from a deterministic ERP
+evidence checklist: STRONG, WEAK, or INSUFFICIENT. No numeric score or weight
+is used to permit action.
 
 I designed it using a release-strategy-like control pattern: value bands and
 segregation of duties are a deterministic authority table configured outside
@@ -118,9 +121,10 @@ not a live SAP integration.
 
 Agent investigation and human-approval decisions write no SAP transaction.
 They produce a case packet for a work queue, including evidence, missing
-information, recommendation, confidence, and the reason authority was not
-granted. A pilot should begin in shadow mode, measure disagreements, and grant
-autonomy per exception class only where observed precision supports it.
+information, recommendation, model confidence for calibration, and the reason
+authority was not granted. A pilot should begin in shadow mode, measure
+disagreements, and grant autonomy per exception class only where observed
+precision supports it.
 
 The dashboard is a view of the measured outputs, not a write-back channel.
 It demonstrates system-event investigation; it does not measure AP time

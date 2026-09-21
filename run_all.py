@@ -22,12 +22,14 @@ import config as C          # noqa: E402
 import data                 # noqa: E402
 import labels as L          # noqa: E402
 import policy_engine as P   # noqa: E402
+import evidence as EV       # noqa: E402
 import evaluate as E        # noqa: E402
 import value_model as V     # noqa: E402
 import case_packet as CP    # noqa: E402
 import rules_engine as R    # noqa: E402
 import agent as AG          # noqa: E402
 from tools import ToolBox   # noqa: E402
+from priority import block_intervals, build_queue, load_reference  # noqa: E402
 
 MOCK = "--live" not in sys.argv
 FINDINGS = []
@@ -154,7 +156,8 @@ def main():
 
     # ---------------------------------------------------------------- STAGE 3
     hr("STAGE 3 — Three arms")
-    res, traj = E.run_arms(ev, mock=MOCK)
+    source_events = data.load_log()
+    res, traj = E.run_arms(ev, mock=MOCK, events=source_events)
     scores = E.arm_scores(res)
     for k, v in scores.items():
         log(k, v, 3)
@@ -165,6 +168,27 @@ def main():
     if tm["never_called"]:
         print(f"  GUARDRAIL 10: never called -> {tm['never_called']} — cut or justify")
 
+    # Human queue: expected wait is a committed historical reference, while
+    # days waited and EUR-days are calculated from this run and snapshot.
+    try:
+        ref = load_reference()
+        event_log = data.load_log().rename(columns={
+            C.CASE_COL: "case_id", C.ACT_COL: "activity", C.TS_COL: "timestamp"})
+        intervals = block_intervals(event_log[["case_id", "activity", "timestamp"]])
+        queue_cases = res.rename(columns={
+            "exception_class_derived": "exception_type",
+            "routed_to": "owner",
+            "C_decision": "decision"})[
+                ["case_id", "exception_type", "owner", "exposure_eur", "decision",
+                 "evidence_level"]]
+        snapshot = event_log["timestamp"].quantile(0.75)
+        queue = build_queue(queue_cases, intervals, ref, as_of=snapshot)
+        queue.to_csv("outputs/human_queue.csv", index=False)
+        log("human_queue_cases", len(queue), 3)
+        log("human_queue_snapshot", str(snapshot), 3)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        print(f"  HUMAN QUEUE NOT GENERATED: {type(exc).__name__}: {exc}")
+
     # ---------------------------------------------------------------- STAGE 4
     hr("STAGE 4 — Measurement and tightening")
     prec = E.precision_by_class(res)
@@ -172,15 +196,16 @@ def main():
     prec.to_csv("outputs/precision_by_class.csv", index=False)
 
     dem = E.find_demotion(prec)
-    matrix, version = P.MATRIX_V1_0, "v1.0"
+    matrix, version = P.MATRIX_V1_0, "v1.2"
     if dem:
         print(f"\n  DEMOTION: {dem['exception_class']} precision "
               f"{dem['precision']:.3f} < {dem['threshold']} (n={dem['n_acted']})")
         matrix = P.demote(P.MATRIX_V1_0, dem["exception_class"],
                           reason=f"precision {dem['precision']:.3f} on n={dem['n_acted']} "
                                  f"below the {dem['threshold']} pilot threshold")
-        version = "v1.1"
-        res2, _ = E.run_arms(ev, mock=MOCK)
+        version = "v1.2"
+        res2, _ = E.run_arms(ev, mock=MOCK, matrix=matrix, policy_version=version,
+                      events=source_events)
         given_up = int((res["C_acted"] & (res["exception_class_derived"]
                                           == dem["exception_class"])).sum())
         log("demoted_class", dem["exception_class"], 4)
@@ -233,8 +258,12 @@ def main():
         a, tj = AG.investigate(row["case_id"], box, mock=MOCK)
         a["_tools"] = tj
         rr = R.evaluate_case(row)
+        ev = EV.evaluate_evidence(a.get("exception_type") or cls,
+                      a.get("_tool_outputs", {}), rr.near_miss)
         pol = P.decide(row["case_id"], a.get("exception_type") or cls, row["exposure_eur"],
-                       a.get("confidence"), bool(a.get("evidence_complete")), rr.near_miss,
+                       ev["evidence_level"], rr.near_miss,
+                   missing_sources=ev["missing_sources"],
+                   contradictions=ev["contradictions"],
                        matrix=matrix, policy_version=version)
         samples.append(CP.render_text(CP.build(row, a, pol, rr.trace)))
     if samples:

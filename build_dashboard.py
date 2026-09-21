@@ -105,7 +105,9 @@ def build():
     exc = read("exception_summary.csv")
     sens = read("threshold_sensitivity.csv")
     prec = read("precision_by_class.csv")
-    cases = read("case_results.csv")
+    cases = read("case_results_v12.csv")
+    cases_source = "v1.2 evidence checklist" if cases is not None else "legacy case results; v1.2 rescore pending"
+    cases = cases if cases is not None else read("case_results.csv")
     vend = read("vendor_concentration.csv")
 
     stamp = "unknown"
@@ -260,7 +262,7 @@ a {{ color:var(--steel) }}
 </style></head><body><main>
 
 <h1>Where should AI autonomy stop in procure-to-pay exception handling?</h1>
-<p class="sub">Measured on the BPI Challenge 2019 SAP procurement log</p>
+<p class="sub">Measured on the BPI Challenge 2019 SAP procurement log · {esc(cases_source)}</p>
 <p class="stampline">Data source: {esc(stamp)} &middot; Generated {date.today().isoformat()}</p>
 {banner}
 

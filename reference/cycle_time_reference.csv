@@ -1,0 +1,8 @@
+exception_type,median_days,n,start_activity,end_activities,source,generated_on
+DUPLICATE_INVOICE_RECEIPT_PATTERN,23.9,9328,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21
+GR_IR_COUNT_MISMATCH,24.0,3865,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21
+MISSING_GOODS_RECEIPT,11.9,192,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21
+NO_EXCEPTION,32.4,145421,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21
+PRIOR_PO_AMENDMENT,31.0,14541,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21
+SEQUENCE_VIOLATION_INVOICE_BEFORE_GR,2.4,15010,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21
+__ALL__,28.5,188357,Record Invoice Receipt,Remove Payment Block|Clear Invoice,"BPI Challenge 2019, closed non-eval cases",2026-09-21

@@ -22,6 +22,7 @@ import pandas as pd
 import config as C
 import labels as L
 import policy_engine as P
+import evidence as EV
 import rules_engine as R
 from tools import ToolBox
 import agent as A
@@ -78,8 +79,8 @@ def freeze_expected_tools(ev, path="docs/expected_tools.json", k=50):
 
 
 # --------------------------------------------------------------------- arms
-def run_arms(ev, mock=True, verbose=True):
-    box = ToolBox(ev)
+def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, events=None):
+    box = ToolBox(ev, events=events)
     rules = R.run(ev).set_index("case_id")
     rows, trajectories, failures = [], {}, []
     total = len(ev)
@@ -103,13 +104,19 @@ def run_arms(ev, mock=True, verbose=True):
             cid,
             agent_out.get("exception_type") or r["exception_class"],
             r["exposure_eur"],
-            agent_out.get("confidence"),
-            bool(agent_out.get("evidence_complete")),
+            evidence_level=(ev := EV.evaluate_evidence(
+                agent_out.get("exception_type") or r["exception_class"],
+                agent_out.get("_tool_outputs", {}), bool(rr["near_miss"])))['evidence_level'],
             near_miss=bool(rr["near_miss"]),
+            missing_sources=ev["missing_sources"],
+            contradictions=ev["contradictions"],
+            matrix=matrix,
+            policy_version=policy_version,
         )
 
         rows.append({
             "case_id": cid,
+            "decision_time": str(box.decision_time(cid)),
             "exception_class_derived": r["exception_class"],
             "outcome_label": r["outcome_label"],
             "exposure_eur": r["exposure_eur"],
@@ -123,6 +130,9 @@ def run_arms(ev, mock=True, verbose=True):
             "B_exception_type": agent_out.get("exception_type"),
             "B_prediction": agent_out.get("recommendation"),
             "B_confidence": agent_out.get("confidence"),
+            "evidence_level": ev["evidence_level"],
+            "missing_sources": "|".join(ev["missing_sources"]),
+            "contradictions": "|".join(ev["contradictions"]),
             "B_correct": agent_out.get("recommendation") == r["outcome_label"],
             # Arm C
             "C_decision": pol.decision,
@@ -133,8 +143,10 @@ def run_arms(ev, mock=True, verbose=True):
             "policy_version": pol.policy_version,
             "routed_to": pol.routed_to,
             "counterfactual_check": pol.counterfactual_check,
+            "rule_fired": pol.rule_fired,
             "n_tool_calls": len(traj),
             "tools_used": "|".join(traj),
+            "tools_called": "|".join(traj),
             "agent_reasoning": agent_out.get("reasoning"),
         })
 

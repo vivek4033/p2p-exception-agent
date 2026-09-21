@@ -115,7 +115,7 @@ AUTO_RESOLVE_VALUE_CAP = 5000.0    # EUR — above this, never auto-resolve
 APPROVAL_VALUE_CAP = 50000.0       # EUR — above this, always escalate
 NEAR_MISS_BAND_PCT = 0.5        # within this of a threshold = near_miss flag
 
-POLICY_VERSION = "v1.0"
+POLICY_VERSION = "v1.2"
 PRECISION_THRESHOLD = 0.95      # pilot design choice, NOT an industry standard
 SENSITIVITY_SWEEP = [0.90, 0.93, 0.95, 0.97]
 

@@ -43,3 +43,19 @@
 | 4 | `bucket_rules_sufficient_pct` | 57.0 |
 | 4 | `bucket_human_necessary_pct` | 31.0 |
 | 4 | `bucket_ai_added_value_pct` | 12.0 |
+
+## Cycle-Time Reference Table
+
+Generated from closed, non-evaluation cases on 2026-09-21 by
+`scripts/build_cycle_time_reference.py`; values are committed in
+`config/cycle_time_reference.csv` and were not typed by hand.
+
+| Exception class | Median days | n |
+|---|---:|---:|
+| DUPLICATE_INVOICE_RECEIPT_PATTERN | 23.9 | 9,328 |
+| GR_IR_COUNT_MISMATCH | 24.0 | 3,865 |
+| MISSING_GOODS_RECEIPT | 11.9 | 192 |
+| NO_EXCEPTION | 32.4 | 145,421 |
+| PRIOR_PO_AMENDMENT | 31.0 | 14,541 |
+| SEQUENCE_VIOLATION_INVOICE_BEFORE_GR | 2.4 | 15,010 |
+| **__ALL__ fallback** | **28.5** | **188,357** |

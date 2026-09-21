@@ -93,9 +93,14 @@ def _mock_investigate(case_id, box):
     result and must never be reported as one.
     """
     traj = []
-    inv = box.call("get_invoice", case_id); traj.append("get_invoice")
-    po = box.call("lookup_po", case_id); traj.append("lookup_po")
-    box.call("lookup_policy", case_id); traj.append("lookup_policy")
+    outputs = {}
+    as_of = box.decision_time(case_id)
+    outputs["get_invoice"] = box.call("get_invoice", case_id, as_of=as_of); traj.append("get_invoice")
+    inv = outputs["get_invoice"]
+    outputs["lookup_po"] = box.call("lookup_po", case_id, as_of=as_of); traj.append("lookup_po")
+    po = outputs["lookup_po"]
+    outputs["lookup_goods_receipt"] = box.call("lookup_goods_receipt", case_id, as_of=as_of); traj.append("lookup_goods_receipt")
+    outputs["lookup_policy"] = box.call("lookup_policy", case_id, as_of=as_of); traj.append("lookup_policy")
 
     dup = inv.get("repeated_receipt_pattern") or inv.get("n_invoice_receipts", 0) > 1
     seq = inv.get("invoice_received_before_goods_receipt")
@@ -104,22 +109,22 @@ def _mock_investigate(case_id, box):
     prior = po.get("po_amended_before_invoice")
 
     if dup:
-        box.call("check_duplicate_payment", case_id); traj.append("check_duplicate_payment")
+        outputs["check_duplicate_payment"] = box.call("check_duplicate_payment", case_id, as_of=as_of); traj.append("check_duplicate_payment")
         etype, rec, conf = L.DUPLICATE, L.OUT_CANCELLED, 0.61
     elif seq:
-        box.call("lookup_goods_receipt", case_id); traj.append("lookup_goods_receipt")
+        outputs["lookup_goods_receipt"] = box.call("lookup_goods_receipt", case_id, as_of=as_of); traj.append("lookup_goods_receipt")
         etype, rec, conf = L.SEQUENCE_VIOLATION, L.OUT_NO_CORRECTION, 0.67
     elif no_gr:
-        box.call("lookup_goods_receipt", case_id); traj.append("lookup_goods_receipt")
+        outputs["lookup_goods_receipt"] = box.call("lookup_goods_receipt", case_id, as_of=as_of); traj.append("lookup_goods_receipt")
         etype, rec, conf = L.MISSING_GR, L.OUT_UNRESOLVED, 0.44
     elif mism:
-        vh = box.call("lookup_vendor_history", case_id); traj.append("lookup_vendor_history")
+        vh = box.call("lookup_vendor_history", case_id, as_of=as_of); outputs["lookup_vendor_history"] = vh; traj.append("lookup_vendor_history")
         etype = L.GR_IR_MISMATCH
         rec, conf = ((L.OUT_QTY_CORRECTION, 0.72)
                      if vh.get("vendor_correction_rate", 0) > 0.4
                      else (L.OUT_NO_CORRECTION, 0.68))
     elif prior:
-        box.call("lookup_vendor_history", case_id); traj.append("lookup_vendor_history")
+        outputs["lookup_vendor_history"] = box.call("lookup_vendor_history", case_id, as_of=as_of); traj.append("lookup_vendor_history")
         etype, rec, conf = L.PRIOR_AMENDMENT, L.OUT_PRICE_CORRECTION, 0.70
     else:
         etype, rec, conf = L.NO_EXCEPTION, L.OUT_AUTO_CLEARED, 0.94
@@ -135,6 +140,7 @@ def _mock_investigate(case_id, box):
                      f"prior_amendment={prior}"],
         "reasoning": "MOCK MODE — deterministic stand-in, not a model output.",
         "mode": "mock",
+        "_tool_outputs": outputs,
     }, traj
 
 
@@ -146,6 +152,8 @@ def _live_investigate(case_id, box, client):
     messages = [{"role": "user",
                  "content": f"Investigate case {case_id}. Begin by gathering evidence."}]
     traj = []
+    tool_outputs = {}
+    as_of = box.decision_time(case_id)
 
     for _ in range(MAX_TURNS):
         resp = client.messages.create(
@@ -158,7 +166,8 @@ def _live_investigate(case_id, box, client):
             for block in resp.content:
                 if block.type == "tool_use":
                     traj.append(block.name)
-                    out = box.call(block.name, block.input.get("case_id", case_id))
+                    out = box.call(block.name, block.input.get("case_id", case_id), as_of=as_of)
+                    tool_outputs[block.name] = out
                     results.append({"type": "tool_result", "tool_use_id": block.id,
                                     "content": json.dumps(out, default=str)})
             messages.append({"role": "user", "content": results})
@@ -169,15 +178,16 @@ def _live_investigate(case_id, box, client):
         try:
             result = json.loads(text)
             result["mode"] = "live"
+            result["_tool_outputs"] = tool_outputs
         except json.JSONDecodeError:
             result = {"exception_type": None, "recommendation": L.OUT_UNRESOLVED,
                       "confidence": 0.0, "evidence_complete": False,
                       "exposure_eur": None, "evidence": [],
                       "reasoning": "Unparseable model output.",
-                      "raw": text[:400], "mode": "live"}
+                      "raw": text[:400], "mode": "live", "_tool_outputs": tool_outputs}
         return result, traj
 
     return {"exception_type": None, "recommendation": L.OUT_UNRESOLVED,
             "confidence": 0.0, "evidence_complete": False, "exposure_eur": None,
             "evidence": [], "reasoning": f"Exceeded {MAX_TURNS} turns.",
-            "mode": "live"}, traj
+            "mode": "live", "_tool_outputs": tool_outputs}, traj

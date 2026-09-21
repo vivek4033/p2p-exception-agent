@@ -73,6 +73,10 @@ def build(case_row, agent_result, policy_decision, rule_trace=None):
         "why_not_auto_resolved": (policy_decision.counterfactual_check
                                   if policy_decision.decision != P.AUTO_RESOLVE else None),
         "policy_version": policy_decision.policy_version,
+        "evidence_level": policy_decision.evidence_level,
+        "rule_fired": policy_decision.rule_fired,
+        "missing_sources": list(policy_decision.missing_sources),
+        "contradictions": list(policy_decision.contradictions),
         "near_miss": policy_decision.near_miss,
         "internal_owner": policy_decision.routed_to,
         "counterparty": party,
@@ -146,7 +150,13 @@ def render_text(p):
     for e in p["evidence"]:
         A(f"  - {e}")
     A("")
-    A(f"RECOMMENDATION      : {p['recommendation']}  (confidence {p['stated_confidence']})")
+    A(f"RECOMMENDATION      : {p['recommendation']}  (model confidence {p['stated_confidence']}; calibration only)")
+    A(f"EVIDENCE LEVEL      : {p['evidence_level']}")
+    A(f"RULE FIRED          : {p['rule_fired']}")
+    if p["missing_sources"]:
+        A(f"MISSING SOURCES     : {', '.join(p['missing_sources'])}")
+    if p["contradictions"]:
+        A(f"CONTRADICTIONS      : {', '.join(p['contradictions'])}")
     A(f"POLICY DECISION     : {p['decision']}  (policy {p['policy_version']})")
     if p["why_not_auto_resolved"]:
         A(f"WHY NOT AUTONOMOUS  : {p['why_not_auto_resolved']}")

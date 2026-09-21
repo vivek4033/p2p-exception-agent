@@ -1,71 +1,26 @@
-"""
-policy_engine.py — the control layer. NO LLM IN THIS FILE, BY DESIGN.
-
-The single most defensible component in the project. The agent produces a
-recommendation; this file decides whether that recommendation may execute.
-
-Interview framing: this is functionally an SAP release strategy applied to a
-non-human actor. SAP already solved authority for humans — value-band approvals,
-release strategies, segregation of duties: a deterministic table of thresholds
-and approvers configured OUTSIDE the transaction. The same control pattern,
-applied to an agent.
-
-The load-bearing principle: the agent can be completely confident and completely
-correct and still not be permitted to act. Permission is a function of exception
-class and transaction value, set outside the model. Confidence is not authority.
-"""
+"""Policy v1.2: ordered evidence checklist and decision table."""
 
 from dataclasses import dataclass, asdict
 from typing import Optional
 
 import config as C
 import labels as L
+import evidence as E
 
 AUTO_RESOLVE = "AUTO_RESOLVE"
 HUMAN_APPROVAL = "HUMAN_APPROVAL"
 ESCALATE = "ESCALATE"
+AUTO_CAP_EUR = 5_000
+ESCALATE_CAP_EUR = 50_000
+POLICY_VERSION = "v1.2"
 
-# ---------------------------------------------------------- decision-rights matrix
-# Every row is policy, and every row needs a justification. This dict IS
-# docs/decision_rights.md in executable form — they must not diverge.
-#
-# v1.0 is the pre-measurement policy. Stage 4 measures precision per class and
-# demotes any class below the threshold, producing v1.1. That demotion is the
-# project's primary interview story.
 MATRIX_V1_0 = {
-    L.NO_EXCEPTION: {
-        "tier": AUTO_RESOLVE,
-        "justification": "No structural irregularity in the evidence available "
-                         "when the invoice arrived. An ERP already clears these.",
-    },
-    L.PRIOR_AMENDMENT: {
-        "tier": HUMAN_APPROVAL,
-        "justification": "The purchase order was amended before invoicing. That "
-                         "may reflect a contractual change the system cannot "
-                         "verify; clearing it accepts a commercial commitment.",
-    },
-    L.GR_IR_MISMATCH: {
-        "tier": HUMAN_APPROVAL,
-        "justification": "Goods receipt and invoice receipt counts disagree, "
-                         "implying a physical discrepancy. Resolution needs "
-                         "warehouse confirmation outside the log.",
-    },
-    L.SEQUENCE_VIOLATION: {
-        "tier": HUMAN_APPROVAL,
-        "justification": "Invoice received before any goods receipt breaks GR/IR "
-                         "sequencing. A control breach, not an arithmetic error.",
-    },
-    L.DUPLICATE: {
-        "tier": ESCALATE,
-        "justification": "A false positive leaves a supplier unpaid; a false "
-                         "negative pays twice. Both failure modes are expensive "
-                         "and asymmetric. AP manager owns the call.",
-    },
-    L.MISSING_GR: {
-        "tier": ESCALATE,
-        "justification": "A goods receipt was expected and none exists. A policy "
-                         "violation owned by procurement, not a data problem.",
-    },
+    L.NO_EXCEPTION: {"tier": AUTO_RESOLVE, "justification": "No structural irregularity in the ERP evidence."},
+    L.PRIOR_AMENDMENT: {"tier": HUMAN_APPROVAL, "justification": "The purchase order was amended before invoicing."},
+    L.GR_IR_MISMATCH: {"tier": HUMAN_APPROVAL, "justification": "Goods receipt and invoice receipt counts disagree."},
+    L.SEQUENCE_VIOLATION: {"tier": HUMAN_APPROVAL, "justification": "Invoice arrived before any goods receipt."},
+    L.DUPLICATE: {"tier": ESCALATE, "justification": "A repeated invoice-receipt pattern needs AP review."},
+    L.MISSING_GR: {"tier": ESCALATE, "justification": "A goods receipt was expected and none exists."},
 }
 
 ROUTING = {
@@ -83,123 +38,103 @@ class PolicyDecision:
     decision: str
     exception_class: str
     exposure_eur: Optional[float]
-    stated_confidence: Optional[float]
     evidence_complete: bool
     policy_version: str
     near_miss: bool
     routed_to: Optional[str]
     reason: str
     counterfactual_check: str
+    evidence_level: str = E.INSUFFICIENT
+    rule_fired: str = "R1"
+    missing_sources: tuple = ()
+    contradictions: tuple = ()
 
     def to_dict(self):
         return asdict(self)
 
 
-def decide(case_id, exception_class, exposure_eur, stated_confidence,
-           evidence_complete, near_miss=False, matrix=None,
-           policy_version=None) -> PolicyDecision:
-    """
-    Deterministic. Same inputs always produce the same decision, which is what
-    makes the system auditable rather than merely explainable.
-
-    Order of checks is the order of authority: value circuit-breakers outrank
-    class permissions, class permissions outrank confidence, and confidence
-    can only ever downgrade — never upgrade — an authority level.
-    """
+def decide(case_id, exception_class, exposure_eur,
+           evidence_level=E.INSUFFICIENT, near_miss=False, matrix=None,
+           policy_version=None, missing_sources=(), contradictions=()) -> PolicyDecision:
+    """Apply strict-first rules R1-R6 using evidence, class, and value facts."""
     matrix = matrix or MATRIX_V1_0
-    policy_version = policy_version or C.POLICY_VERSION
-    routed = ROUTING.get(exception_class)
-
+    policy_version = policy_version or POLICY_VERSION
     row = matrix.get(exception_class)
+    routed = ROUTING.get(exception_class)
+    missing_sources = tuple(missing_sources)
+    contradictions = tuple(contradictions)
+
+    # R1: missing/unknown evidence or value always escalates.
+    if evidence_level == E.INSUFFICIENT or exposure_eur is None:
+        return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
+                              False, policy_version, near_miss,
+                              routed or "AP Manager", "Evidence is insufficient.",
+                              "Not auto-resolved: R1 evidence or value gate.", evidence_level,
+                              "R1", missing_sources, contradictions)
+    # R2: value circuit breaker outranks class routing.
+    if exposure_eur > ESCALATE_CAP_EUR:
+        return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed or "Finance",
+                              "Transaction value exceeds the escalation cap.",
+                              "Not auto-resolved: R2 value circuit breaker.", evidence_level,
+                              "R2", missing_sources, contradictions)
+    # R3: class must be explicitly permitted for autonomy.
     if row is None:
         return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
-                              stated_confidence, evidence_complete, policy_version,
-                              near_miss, routed or "AP Manager",
-                              "Exception class outside delegated authority.",
-                              "Not auto-resolved: class not present in the "
-                              "decision-rights matrix.")
-
-    base = row["tier"]
-
-    # --- C1 hard value circuit breaker, outranks everything
-    if exposure_eur is not None and exposure_eur > C.APPROVAL_VALUE_CAP:
-        return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
-                              stated_confidence, evidence_complete, policy_version,
-                              near_miss, routed or "Finance",
-                              f"Exposure EUR {exposure_eur:,.0f} exceeds the escalation "
-                              f"cap of EUR {C.APPROVAL_VALUE_CAP:,.0f}.",
-                              "Not auto-resolved: value circuit breaker.")
-
-    # --- C2 evidence completeness gate
-    if not evidence_complete:
-        return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
-                              stated_confidence, evidence_complete, policy_version,
-                              near_miss, routed or "AP Manager",
-                              "Evidence incomplete or contradictory.",
-                              "Not auto-resolved: the agent could not assemble a "
-                              "complete evidence set.")
-
-    if base == AUTO_RESOLVE:
-        # --- C3 value cap on autonomous action
-        if exposure_eur is not None and exposure_eur > C.AUTO_RESOLVE_VALUE_CAP:
-            return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
-                                  stated_confidence, evidence_complete, policy_version,
-                                  near_miss, routed,
-                                  f"Class permits autonomy but exposure EUR "
-                                  f"{exposure_eur:,.0f} exceeds the autonomous cap of "
-                                  f"EUR {C.AUTO_RESOLVE_VALUE_CAP:,.0f}.",
-                                  "Downgraded from AUTO_RESOLVE: value band.")
-        # --- C4 confidence may only downgrade
-        if stated_confidence is not None and stated_confidence < 0.80:
-            return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
-                                  stated_confidence, evidence_complete, policy_version,
-                                  near_miss, routed,
-                                  f"Stated confidence {stated_confidence:.2f} below the "
-                                  f"0.80 autonomous floor.",
-                                  "Downgraded from AUTO_RESOLVE: low stated confidence.")
-        # --- C5 near-miss cases sit close to a threshold boundary
-        if near_miss:
-            return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
-                                  stated_confidence, evidence_complete, policy_version,
-                                  near_miss, routed,
-                                  "Case sits inside the near-miss band of a tolerance "
-                                  "boundary.",
-                                  "Downgraded from AUTO_RESOLVE: near-miss.")
-        return PolicyDecision(case_id, AUTO_RESOLVE, exception_class, exposure_eur,
-                              stated_confidence, evidence_complete, policy_version,
-                              near_miss, None, row["justification"],
-                              "Auto-resolved: class permitted, value within cap, "
-                              "evidence complete, not near a boundary.")
-
-    return PolicyDecision(case_id, base, exception_class, exposure_eur,
-                          stated_confidence, evidence_complete, policy_version,
-                          near_miss, routed, row["justification"],
-                          f"Not auto-resolved: class tier is {base}.")
+                              True, policy_version, near_miss, routed or "AP Manager",
+                              "Exception class is outside the taxonomy.",
+                              "Not auto-resolved: R3 unknown taxonomy class.", evidence_level,
+                              "R3", missing_sources, contradictions)
+    if row["tier"] != AUTO_RESOLVE:
+        tier = row["tier"]
+        return PolicyDecision(case_id, tier, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed or "AP Manager",
+                              "Exception class is outside delegated authority.",
+                              f"Not auto-resolved: R3 class tier is {tier}.", evidence_level,
+                              "R3", missing_sources, contradictions)
+    # R4: autonomy is limited to the lower value band.
+    if exposure_eur > AUTO_CAP_EUR:
+        return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed,
+                              "Exposure exceeds the autonomous action cap.",
+                              "Not auto-resolved: R4 autonomous value band.", evidence_level,
+                              "R4", missing_sources, contradictions)
+    # R5: complete but weak evidence requires human approval.
+    if evidence_level == E.WEAK:
+        return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed,
+                              "Evidence is present but contradictory or near a boundary.",
+                              "Not auto-resolved: R5 weak evidence.", evidence_level,
+                              "R5", missing_sources, contradictions)
+    # R6: all gates passed.
+    return PolicyDecision(case_id, AUTO_RESOLVE, exception_class, exposure_eur,
+                          True, policy_version, near_miss, None,
+                          row["justification"],
+                          "Auto-resolved: R6 strong evidence, permitted class, and value within cap.",
+                          evidence_level, "R6", missing_sources, contradictions)
 
 
 def demote(matrix, exception_class, to_tier=HUMAN_APPROVAL, reason=""):
-    """
-    Stage 4 produces v1.1 by calling this. Returns a NEW matrix — the v1.0
-    object is never mutated, so before/after is reconstructible from the audit
-    log rather than asserted.
-    """
     new = {k: dict(v) for k, v in matrix.items()}
     if exception_class in new:
         new[exception_class]["tier"] = to_tier
-        new[exception_class]["justification"] = (
-            new[exception_class]["justification"] + f" DEMOTED v1.1: {reason}")
+        new[exception_class]["justification"] += f" DEMOTED v1.1: {reason}"
     return new
 
 
 def matrix_to_markdown(matrix, version):
     lines = [f"# Decision-Rights Matrix — {version}", "",
-             "| Exception class | Tier | Routed to | Justification |",
-             "|---|---|---|---|"]
-    for k, v in matrix.items():
-        lines.append(f"| {k} | {v['tier']} | {ROUTING.get(k, '—')} | {v['justification']} |")
+             "| Exception class | Tier | Routed to | Justification |", "|---|---|---|---|"]
+    for key, value in matrix.items():
+        lines.append(f"| {key} | {value['tier']} | {ROUTING.get(key, '—')} | {value['justification']} |")
     lines += ["", "**Value bands (policy, not findings):**",
-              f"- Autonomous action cap: EUR {C.AUTO_RESOLVE_VALUE_CAP:,.0f}",
-              f"- Escalation cap: EUR {C.APPROVAL_VALUE_CAP:,.0f}",
-              "- No arithmetic tolerance: this log carries no per-document "
-              "amounts, so classes are structural, not variance-based."]
+              f"- Autonomous action cap: EUR {AUTO_CAP_EUR:,.0f}",
+              f"- Escalation cap: EUR {ESCALATE_CAP_EUR:,.0f}", "",
+              "**Ordered policy rules:**",
+              "- R1: insufficient evidence or unknown value -> ESCALATE",
+              "- R2: value above EUR 50,000 -> ESCALATE",
+              "- R3: class not auto-permitted -> matrix outcome",
+              "- R4: value above EUR 5,000 -> HUMAN_APPROVAL",
+              "- R5: weak evidence -> HUMAN_APPROVAL",
+              "- R6: all checks pass -> AUTO_RESOLVE"]
     return "\n".join(lines)
