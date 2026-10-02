@@ -1,6 +1,7 @@
 """Policy v1.2: ordered evidence checklist and decision table."""
 
 from dataclasses import dataclass, asdict
+import math
 from typing import Optional
 
 import config as C
@@ -55,8 +56,9 @@ class PolicyDecision:
 
 def decide(case_id, exception_class, exposure_eur,
            evidence_level=E.INSUFFICIENT, near_miss=False, matrix=None,
-           policy_version=None, missing_sources=(), contradictions=()) -> PolicyDecision:
-    """Apply strict-first rules R1-R6 using evidence, class, and value facts."""
+           policy_version=None, missing_sources=(), contradictions=(),
+           confidence=None, recommendation=None) -> PolicyDecision:
+    """Apply strict-first rules R1-R6 to the agent proposal and policy facts."""
     matrix = matrix or MATRIX_V1_0
     policy_version = policy_version or POLICY_VERSION
     row = matrix.get(exception_class)
@@ -64,12 +66,31 @@ def decide(case_id, exception_class, exposure_eur,
     missing_sources = tuple(missing_sources)
     contradictions = tuple(contradictions)
 
+    try:
+        exposure_eur = float(exposure_eur)
+    except (TypeError, ValueError):
+        exposure_eur = None
+    if exposure_eur is not None and not math.isfinite(exposure_eur):
+        exposure_eur = None
+    if isinstance(confidence, str):
+        confidence = confidence.strip().upper()
+    if confidence not in L.CONFIDENCE_LEVELS:
+        confidence = L.CONFIDENCE_WEAK
+
+    recommendations = {
+        L.OUT_AUTO_CLEARED, L.OUT_PRICE_CORRECTION, L.OUT_QTY_CORRECTION,
+        L.OUT_NO_CORRECTION, L.OUT_CANCELLED, L.OUT_UNRESOLVED,
+    }
+
     # R1: missing/unknown evidence or value always escalates.
-    if evidence_level == E.INSUFFICIENT or exposure_eur is None:
+    if (evidence_level == E.INSUFFICIENT or exposure_eur is None
+            or recommendation not in recommendations
+            or recommendation == L.OUT_UNRESOLVED):
         return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
                               False, policy_version, near_miss,
-                              routed or "AP Manager", "Evidence is insufficient.",
-                              "Not auto-resolved: R1 evidence or value gate.", evidence_level,
+                              routed or "AP Manager",
+                              "Evidence, exposure, or agent recommendation is insufficient.",
+                              "Not auto-resolved: R1 evidence, value, or recommendation gate.", evidence_level,
                               "R1", missing_sources, contradictions)
     # R2: value circuit breaker outranks class routing.
     if exposure_eur > ESCALATE_CAP_EUR:
@@ -99,12 +120,18 @@ def decide(case_id, exception_class, exposure_eur,
                               "Exposure exceeds the autonomous action cap.",
                               "Not auto-resolved: R4 autonomous value band.", evidence_level,
                               "R4", missing_sources, contradictions)
-    # R5: complete but weak evidence requires human approval.
-    if evidence_level == E.WEAK:
+    # R5: either weak evidence or non-strong model confidence requires review.
+    if evidence_level == E.WEAK or confidence != L.CONFIDENCE_STRONG:
         return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
                               True, policy_version, near_miss, routed,
-                              "Evidence is present but contradictory or near a boundary.",
-                              "Not auto-resolved: R5 weak evidence.", evidence_level,
+                              "Evidence or agent confidence is not strong enough for autonomy.",
+                              "Not auto-resolved: R5 weak evidence or non-strong agent confidence.", evidence_level,
+                              "R5", missing_sources, contradictions)
+    if row["tier"] == AUTO_RESOLVE and recommendation != L.OUT_AUTO_CLEARED:
+        return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed or "AP Manager",
+                              "The agent recommendation is outside delegated authority.",
+                              "Not auto-resolved: R5 recommendation requires human review.", evidence_level,
                               "R5", missing_sources, contradictions)
     # R6: all gates passed.
     return PolicyDecision(case_id, AUTO_RESOLVE, exception_class, exposure_eur,

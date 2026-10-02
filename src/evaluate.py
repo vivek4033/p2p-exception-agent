@@ -100,10 +100,11 @@ def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, even
             continue
         trajectories[cid] = traj
 
+        agent_exposure = agent_out.get("exposure_eur")
         pol = P.decide(
             cid,
             agent_out.get("exception_type") or r["exception_class"],
-            r["exposure_eur"],
+            agent_exposure,
             evidence_level=(ev := EV.evaluate_evidence(
                 agent_out.get("exception_type") or r["exception_class"],
                 agent_out.get("_tool_outputs", {}), bool(rr["near_miss"])))['evidence_level'],
@@ -112,6 +113,8 @@ def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, even
             contradictions=ev["contradictions"],
             matrix=matrix,
             policy_version=policy_version,
+            confidence=agent_out.get("confidence"),
+            recommendation=agent_out.get("recommendation"),
         )
 
         rows.append({
@@ -130,6 +133,7 @@ def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, even
             "B_exception_type": agent_out.get("exception_type"),
             "B_prediction": agent_out.get("recommendation"),
             "B_confidence": agent_out.get("confidence"),
+            "C_agent_exposure_eur": agent_exposure,
             "evidence_level": ev["evidence_level"],
             "missing_sources": "|".join(ev["missing_sources"]),
             "contradictions": "|".join(ev["contradictions"]),

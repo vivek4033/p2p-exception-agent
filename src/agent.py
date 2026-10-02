@@ -53,16 +53,47 @@ markdown fences:
 
 {{"exception_type": one of {sorted([L.NO_EXCEPTION, L.PRIOR_AMENDMENT, L.GR_IR_MISMATCH, L.SEQUENCE_VIOLATION, L.DUPLICATE, L.MISSING_GR])},
  "recommendation": one of {sorted([L.OUT_AUTO_CLEARED, L.OUT_PRICE_CORRECTION, L.OUT_QTY_CORRECTION, L.OUT_NO_CORRECTION, L.OUT_CANCELLED, L.OUT_UNRESOLVED])},
- "confidence": float between 0 and 1,
+ "confidence": one of {list(L.CONFIDENCE_LEVELS)},
  "evidence_complete": boolean,
  "exposure_eur": number,
  "evidence": [short strings, what you actually found],
- "reasoning": one or two sentences}}"""
+ "reasoning": one or two sentences}}
+
+The recommendation is the proposed resolution outcome, never a routing choice. \\
+Do not choose AUTO_RESOLVE or HUMAN_APPROVAL; Arm C owns that decision using \\
+policy, confidence, evidence, and exposure."""
 
 
 def _cache_key(case_id, salt=""):
     h = hashlib.sha256(f"{case_id}|{MODEL}|{salt}|{SYSTEM_PROMPT}".encode()).hexdigest()[:16]
     return os.path.join(CACHE_DIR, f"{case_id}_{h}.json")
+
+
+def _normalize_confidence(value):
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        if normalized in L.CONFIDENCE_LEVELS:
+            return normalized
+    return L.CONFIDENCE_WEAK
+
+
+def _extract_json(text):
+    text = text.replace("```json", "").replace("```", "").strip()
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
 
 
 def investigate(case_id, box: ToolBox, mock=False, client=None, salt=""):
@@ -72,11 +103,19 @@ def investigate(case_id, box: ToolBox, mock=False, client=None, salt=""):
     if os.path.exists(path):
         with open(path) as fh:
             d = json.load(fh)
+        d["result"]["confidence"] = _normalize_confidence(
+            d["result"].get("confidence"))
         return d["result"], d["trajectory"]
 
     if mock:
         result, traj = _mock_investigate(case_id, box)
     else:
+        if os.environ.get("AGENT_CACHE_ONLY") == "1":
+            return ({"exception_type": None, "recommendation": L.OUT_UNRESOLVED,
+                     "confidence": L.CONFIDENCE_WEAK, "evidence_complete": False,
+                     "exposure_eur": None,
+                     "evidence": [], "reasoning": "Not cached; cache-only mode.",
+                     "mode": "cache_miss", "_tool_outputs": {}}, [])
         result, traj = _live_investigate(case_id, box, client)
 
     with open(path, "w") as fh:
@@ -110,24 +149,26 @@ def _mock_investigate(case_id, box):
 
     if dup:
         outputs["check_duplicate_payment"] = box.call("check_duplicate_payment", case_id, as_of=as_of); traj.append("check_duplicate_payment")
-        etype, rec, conf = L.DUPLICATE, L.OUT_CANCELLED, 0.61
+        etype, rec, conf = L.DUPLICATE, L.OUT_CANCELLED, L.CONFIDENCE_INTERMEDIATE
     elif seq:
         outputs["lookup_goods_receipt"] = box.call("lookup_goods_receipt", case_id, as_of=as_of); traj.append("lookup_goods_receipt")
-        etype, rec, conf = L.SEQUENCE_VIOLATION, L.OUT_NO_CORRECTION, 0.67
+        etype, rec, conf = (L.SEQUENCE_VIOLATION, L.OUT_NO_CORRECTION,
+                    L.CONFIDENCE_INTERMEDIATE)
     elif no_gr:
         outputs["lookup_goods_receipt"] = box.call("lookup_goods_receipt", case_id, as_of=as_of); traj.append("lookup_goods_receipt")
-        etype, rec, conf = L.MISSING_GR, L.OUT_UNRESOLVED, 0.44
+        etype, rec, conf = L.MISSING_GR, L.OUT_UNRESOLVED, L.CONFIDENCE_WEAK
     elif mism:
         vh = box.call("lookup_vendor_history", case_id, as_of=as_of); outputs["lookup_vendor_history"] = vh; traj.append("lookup_vendor_history")
         etype = L.GR_IR_MISMATCH
-        rec, conf = ((L.OUT_QTY_CORRECTION, 0.72)
-                     if vh.get("vendor_correction_rate", 0) > 0.4
-                     else (L.OUT_NO_CORRECTION, 0.68))
+        rec, conf = ((L.OUT_QTY_CORRECTION, L.CONFIDENCE_INTERMEDIATE)
+                 if vh.get("vendor_correction_rate", 0) > 0.4
+                 else (L.OUT_NO_CORRECTION, L.CONFIDENCE_INTERMEDIATE))
     elif prior:
         outputs["lookup_vendor_history"] = box.call("lookup_vendor_history", case_id, as_of=as_of); traj.append("lookup_vendor_history")
-        etype, rec, conf = L.PRIOR_AMENDMENT, L.OUT_PRICE_CORRECTION, 0.70
+        etype, rec, conf = (L.PRIOR_AMENDMENT, L.OUT_PRICE_CORRECTION,
+                    L.CONFIDENCE_INTERMEDIATE)
     else:
-        etype, rec, conf = L.NO_EXCEPTION, L.OUT_AUTO_CLEARED, 0.94
+        etype, rec, conf = L.NO_EXCEPTION, L.OUT_AUTO_CLEARED, L.CONFIDENCE_STRONG
 
     return {
         "exception_type": etype,
@@ -153,12 +194,17 @@ def _live_investigate(case_id, box, client):
                  "content": f"Investigate case {case_id}. Begin by gathering evidence."}]
     traj = []
     tool_outputs = {}
+    usage = {"input_tokens": 0, "output_tokens": 0}
     as_of = box.decision_time(case_id)
+    parse_retries = 0
 
     for _ in range(MAX_TURNS):
         resp = client.messages.create(
             model=MODEL, max_tokens=1200, system=SYSTEM_PROMPT,
             tools=tool_schemas(), messages=messages)
+        if getattr(resp, "usage", None):
+            usage["input_tokens"] += getattr(resp.usage, "input_tokens", 0) or 0
+            usage["output_tokens"] += getattr(resp.usage, "output_tokens", 0) or 0
 
         if resp.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": resp.content})
@@ -170,24 +216,37 @@ def _live_investigate(case_id, box, client):
                     tool_outputs[block.name] = out
                     results.append({"type": "tool_result", "tool_use_id": block.id,
                                     "content": json.dumps(out, default=str)})
-            messages.append({"role": "user", "content": results})
+            if results:
+                messages.append({"role": "user", "content": results})
+            else:
+                messages.append({"role": "user",
+                                 "content": "Continue the investigation or reply with ONLY the JSON object."})
             continue
 
         text = "".join(b.text for b in resp.content if b.type == "text").strip()
-        text = text.replace("```json", "").replace("```", "").strip()
-        try:
-            result = json.loads(text)
+        result = _extract_json(text)
+        if result is not None:
+            result["confidence"] = _normalize_confidence(result.get("confidence"))
             result["mode"] = "live"
             result["_tool_outputs"] = tool_outputs
-        except json.JSONDecodeError:
-            result = {"exception_type": None, "recommendation": L.OUT_UNRESOLVED,
-                      "confidence": 0.0, "evidence_complete": False,
-                      "exposure_eur": None, "evidence": [],
-                      "reasoning": "Unparseable model output.",
-                      "raw": text[:400], "mode": "live", "_tool_outputs": tool_outputs}
-        return result, traj
+            result["_usage"] = usage
+            return result, traj
+
+        if parse_retries == 0:
+            messages.append({"role": "assistant", "content": resp.content})
+            messages.append({"role": "user", "content": "Reply with ONLY the JSON object, no prose."})
+            parse_retries += 1
+            continue
+
+        return {"exception_type": None, "recommendation": L.OUT_UNRESOLVED,
+            "confidence": L.CONFIDENCE_WEAK, "evidence_complete": False,
+                "exposure_eur": None, "evidence": [],
+                "reasoning": "Unparseable model output.",
+                "raw": text[:400], "mode": "live", "_tool_outputs": tool_outputs,
+                "_usage": usage}, traj
 
     return {"exception_type": None, "recommendation": L.OUT_UNRESOLVED,
-            "confidence": 0.0, "evidence_complete": False, "exposure_eur": None,
+            "confidence": L.CONFIDENCE_WEAK, "evidence_complete": False,
+            "exposure_eur": None,
             "evidence": [], "reasoning": f"Exceeded {MAX_TURNS} turns.",
-            "mode": "live", "_tool_outputs": tool_outputs}, traj
+            "mode": "live", "_tool_outputs": tool_outputs, "_usage": usage}, traj
