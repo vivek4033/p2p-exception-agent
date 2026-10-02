@@ -1,4 +1,5 @@
 import sys
+from itertools import product
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -215,6 +216,29 @@ def test_policy_matrix_has_no_automatic_tier():
     assert {row["tier"] for row in policy_engine.MATRIX_V1_3.values()} <= {
         policy_engine.HUMAN_APPROVAL, policy_engine.ESCALATE,
     }
+
+
+def test_policy_v13_cannot_auto_resolve():
+    classes = [*policy_engine.MATRIX_V1_3, "UNKNOWN"]
+    evidence_levels = [evidence.STRONG, evidence.WEAK, evidence.INSUFFICIENT]
+    confidences = [*labels.CONFIDENCE_LEVELS, None, "INVALID"]
+    recommendations = [
+        labels.OUT_AUTO_CLEARED, labels.OUT_PRICE_CORRECTION,
+        labels.OUT_QTY_CORRECTION, labels.OUT_NO_CORRECTION,
+        labels.OUT_CANCELLED, labels.OUT_UNRESOLVED, "AUTO_RESOLVE", None,
+    ]
+    values = [None, float("nan"), 0, 5000, 50000, 50001]
+    contradictions = [(), ("PO_CHANGED_AFTER_INVOICE",)]
+    allowed = {policy_engine.ESCALATE, policy_engine.HUMAN_APPROVAL}
+
+    for cls, evidence_level, confidence, recommendation, exposure, conflict in product(
+            classes, evidence_levels, confidences, recommendations, values, contradictions):
+        decision = policy_engine.decide(
+            "case", cls, exposure, evidence_level,
+            confidence=confidence, recommendation=recommendation,
+            contradictions=conflict,
+        )
+        assert decision.decision in allowed
 
 
 def test_minutes_saved_model_requires_explicit_assumption(monkeypatch):

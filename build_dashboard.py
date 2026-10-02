@@ -47,6 +47,67 @@ def routing_table(cases):
             f"<th>Share</th></tr></thead><tbody>{rows}</tbody></table>")
 
 
+def priority_queue_table(queue, cases, top=10):
+    if queue is None or queue.empty or cases is None or cases.empty:
+        return "<p class='pending'>No v1.3 prioritized human queue is available.</p>"
+    current = cases[["case_id", "C_decision", "routed_to"]]
+    queue = queue.drop(columns=["decision", "owner"], errors="ignore").merge(
+        current, on="case_id", how="inner")
+    queue = queue[queue.C_decision.isin(["HUMAN_APPROVAL", "ESCALATE"])].copy()
+    if queue.empty:
+        return "<p class='pending'>No open cases in the v1.3 queue snapshot.</p>"
+    queue["owner"] = queue.routed_to.fillna("AP Manager")
+    queue = queue.sort_values("queue_priority_eur_days", ascending=False).head(top)
+    as_of = pd.to_datetime(queue["as_of"], utc=True).max().strftime("%Y-%m-%d %H:%M UTC")
+    rows = "".join(
+        f"<tr><td>{esc(r.case_id)}</td><td>{esc(r.exception_type.replace('_', ' ').title())}</td>"
+        f"<td>{esc(r.C_decision.replace('_', ' ').title())}</td><td>{esc(r.owner)}</td>"
+        f"<td class='num'>EUR {r.exposure_eur:,.0f}</td>"
+        f"<td class='num'>{r.expected_days_blocked:.1f}</td>"
+        f"<td class='num'>EUR-days {r.queue_priority_eur_days:,.0f}</td>"
+        f"<td>{esc(r.priority_driver.replace('_', ' '))}</td></tr>"
+        for r in queue.itertuples())
+    return (f"<p>Historical queue snapshot: {as_of}. Priority = ERP exposure × "
+            "expected blocked days, using the committed out-of-evaluation class median and elapsed wait.</p>"
+            "<div class='queue-wrap'><table class='data'><thead><tr>"
+            "<th>Case</th><th>Exception</th><th>Policy</th><th>Owner</th>"
+            "<th>Exposure</th><th>Expected days</th><th>Priority</th><th>Driver</th>"
+            f"</tr></thead><tbody>{rows}</tbody></table></div>")
+
+
+def decision_evidence_table(historical):
+    required = {"exception_class_derived", "B_correct", "B_exception_type",
+                "C_acted", "C_correct_when_acted", "B_confidence"}
+    if historical is None or historical.empty or not required.issubset(historical.columns):
+        return "<p class='pending'>Historical v1.2 evaluation evidence is unavailable.</p>"
+    exceptions = historical[historical.exception_class_derived != "NO_EXCEPTION"]
+    confidence = pd.to_numeric(historical.B_confidence, errors="coerce")
+    band = (confidence > 0.8) & (confidence < 0.9)
+    acted = historical.C_acted.astype(str).str.lower().isin(["true", "1", "1.0"])
+    exception_auto = acted & (historical.exception_class_derived != "NO_EXCEPTION")
+    correct_auto = historical.C_correct_when_acted.astype(str).str.lower().isin(
+        ["true", "1", "1.0"])
+    rows = [
+        ("Exception recommendation accuracy", f"{exceptions.B_correct.mean():.1%}",
+         f"{len(exceptions)} exception cases"),
+        ("Exception-type accuracy", f"{(historical.B_exception_type == historical.exception_class_derived).mean():.1%}",
+         f"{len(historical)} v1.2 evaluation cases"),
+        ("Accuracy when 0.8 < numeric confidence < 0.9",
+         f"{historical.loc[band, 'B_correct'].mean():.1%}" if band.any() else "n/a",
+         f"{int(band.sum())} cases; strict interval"),
+        ("v1.2 exception cases auto-resolved correctly",
+         f"{int((exception_auto & correct_auto).sum())}/{int(exception_auto.sum())}",
+         "all v1.2 exception auto-resolutions were incorrect"),
+    ]
+    body = "".join(
+        f"<tr><th scope='row'>{esc(name)}</th><td class='num'>{value}</td>"
+        f"<td>{esc(scope)}</td></tr>" for name, value, scope in rows)
+    return ("<p>Historical v1.2 evidence motivating removal of automatic resolution. "
+            "These are not categorical-confidence or v1.3 live results.</p>"
+            "<table class='data'><thead><tr><th>Measure</th><th>Result</th><th>Scope</th></tr></thead>"
+            f"<tbody>{body}</tbody></table>")
+
+
 def bar_table(df, label_col, value_col, fmt="{:.0f}"):
     if df is None or df.empty:
         return "<p class='pending'>Not yet computed.</p>"
@@ -68,6 +129,8 @@ def build():
     exc = read("exception_summary.csv")
     prec = read("recommendation_quality_by_class.csv")
     cases = read("case_results_v13.csv")
+    historical = read("case_results.csv")
+    queue = read("human_queue.csv")
     cases_source = "policy v1.3" if cases is not None else "historical results; v1.3 rescore pending"
     vend = read("vendor_concentration.csv")
 
@@ -138,6 +201,8 @@ def build():
                       f"not a technical one.</p>")
 
     outcomes = routing_table(cases)
+    queue_block = priority_queue_table(queue, cases)
+    decision_evidence = decision_evidence_table(historical)
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -146,7 +211,7 @@ def build():
 <style>
 :root {{
   --paper:#FBFBF9; --ink:#191C1F; --muted:#5C6670; --rule:#D8D6CF;
-    --steel:#3E5566; --approve:#B0803A; --escalate:#9C4A38;
+    --steel:#3E5566; --rules:#4F7A5C; --approve:#B0803A; --escalate:#9C4A38;
 }}
 * {{ box-sizing:border-box }}
 body {{
@@ -182,6 +247,8 @@ table {{ border-collapse:collapse; width:100%; margin:8px 0 }}
 .data th, .data td {{ text-align:left; padding:8px 10px;
                       border-bottom:1px solid var(--rule); font-size:14px }}
 .data thead th {{ color:var(--muted); font-weight:500 }}
+.queue-wrap {{ overflow-x:auto }}
+.queue-wrap .data {{ min-width:920px }}
 .num {{ text-align:right; font-variant-numeric:tabular-nums }}
 .below {{ color:var(--escalate); font-weight:600 }}
 .bars th {{ text-align:left; font-weight:400; font-size:14px; padding:5px 10px 5px 0;
@@ -190,13 +257,13 @@ table {{ border-collapse:collapse; width:100%; margin:8px 0 }}
 .bar {{ display:block; height:11px; background:var(--steel); opacity:.72 }}
 .bars .num {{ padding-left:12px; font-size:14px; width:1%; white-space:nowrap }}
 .stack {{ display:flex; height:26px; margin:14px 0 12px; overflow:hidden }}
-.seg.rules_sufficient {{ background:var(--auto) }}
+.seg.rules_sufficient {{ background:var(--rules) }}
 .seg.ai_added_value {{ background:var(--steel) }}
 .seg.human_necessary {{ background:var(--approve) }}
 .key {{ list-style:none; padding:0; margin:0; display:flex; gap:22px;
         flex-wrap:wrap; font-size:14px }}
 .sw {{ display:inline-block; width:11px; height:11px; margin-right:7px }}
-.sw.rules_sufficient {{ background:var(--auto) }}
+.sw.rules_sufficient {{ background:var(--rules) }}
 .sw.ai_added_value {{ background:var(--steel) }}
 .sw.human_necessary {{ background:var(--approve) }}
 .pending {{ color:var(--muted); font-style:italic }}
@@ -230,6 +297,13 @@ a {{ color:var(--steel) }}
 <p>ERP evidence and policy determine whether a case needs human review or
 escalation. The policy does not authorize automatic resolution.</p>
 {outcomes}
+
+<h2>Prioritized human queue</h2>
+{queue_block}
+
+<h2>Evidence behind no automatic resolution</h2>
+{decision_evidence}
+<p><a href="decision_log.md">Read the full policy decision log.</a></p>
 
 <h2>Where each case ends up</h2>
 <p>Assigned mechanically. A case counts as agent value only where the rules
@@ -269,6 +343,8 @@ that were eventually cleared, and resolution times are survivor-biased.</li>
 rather than variance-based.</li>
 <li>Human investigation steps between system events are not recorded. They are
 modelled from standard AP practice and treated as assumption.</li>
+<li>The recurring same-class supplier check is designed and unit-tested, but
+has not been evaluated live.</li>
 </ol>
 
 <footer>

@@ -5,7 +5,7 @@
 <style>
 :root {
   --paper:#FBFBF9; --ink:#191C1F; --muted:#5C6670; --rule:#D8D6CF;
-    --steel:#3E5566; --approve:#B0803A; --escalate:#9C4A38;
+    --steel:#3E5566; --rules:#4F7A5C; --approve:#B0803A; --escalate:#9C4A38;
 }
 * { box-sizing:border-box }
 body {
@@ -41,6 +41,8 @@ table { border-collapse:collapse; width:100%; margin:8px 0 }
 .data th, .data td { text-align:left; padding:8px 10px;
                       border-bottom:1px solid var(--rule); font-size:14px }
 .data thead th { color:var(--muted); font-weight:500 }
+.queue-wrap { overflow-x:auto }
+.queue-wrap .data { min-width:920px }
 .num { text-align:right; font-variant-numeric:tabular-nums }
 .below { color:var(--escalate); font-weight:600 }
 .bars th { text-align:left; font-weight:400; font-size:14px; padding:5px 10px 5px 0;
@@ -49,13 +51,13 @@ table { border-collapse:collapse; width:100%; margin:8px 0 }
 .bar { display:block; height:11px; background:var(--steel); opacity:.72 }
 .bars .num { padding-left:12px; font-size:14px; width:1%; white-space:nowrap }
 .stack { display:flex; height:26px; margin:14px 0 12px; overflow:hidden }
-.seg.rules_sufficient { background:var(--auto) }
+.seg.rules_sufficient { background:var(--rules) }
 .seg.ai_added_value { background:var(--steel) }
 .seg.human_necessary { background:var(--approve) }
 .key { list-style:none; padding:0; margin:0; display:flex; gap:22px;
         flex-wrap:wrap; font-size:14px }
 .sw { display:inline-block; width:11px; height:11px; margin-right:7px }
-.sw.rules_sufficient { background:var(--auto) }
+.sw.rules_sufficient { background:var(--rules) }
 .sw.ai_added_value { background:var(--steel) }
 .sw.human_necessary { background:var(--approve) }
 .pending { color:var(--muted); font-style:italic }
@@ -89,6 +91,13 @@ a { color:var(--steel) }
 <p>ERP evidence and policy determine whether a case needs human review or
 escalation. The policy does not authorize automatic resolution.</p>
 <table class='data'><thead><tr><th>Policy outcome</th><th>Cases</th><th>Share</th></tr></thead><tbody><tr><th scope='row'>Human Approval</th><td class='num'>121</td><td class='num'>66.9%</td></tr><tr><th scope='row'>Escalate</th><td class='num'>60</td><td class='num'>33.1%</td></tr></tbody></table>
+
+<h2>Prioritized human queue</h2>
+<p>Historical queue snapshot: 2018-10-08 07:02 UTC. Priority = ERP exposure × expected blocked days, using the committed out-of-evaluation class median and elapsed wait.</p><div class='queue-wrap'><table class='data'><thead><tr><th>Case</th><th>Exception</th><th>Policy</th><th>Owner</th><th>Exposure</th><th>Expected days</th><th>Priority</th><th>Driver</th></tr></thead><tbody><tr><td>4508051425_00010</td><td>Prior Po Amendment</td><td>Human Approval</td><td>Procurement</td><td class='num'>EUR 43,204</td><td class='num'>31.0</td><td class='num'>EUR-days 1,339,324</td><td>class median</td></tr><tr><td>4507034143_00120</td><td>Prior Po Amendment</td><td>Human Approval</td><td>Procurement</td><td class='num'>EUR 21,575</td><td class='num'>51.7</td><td class='num'>EUR-days 1,115,502</td><td>overdue</td></tr><tr><td>4507024704_00030</td><td>Prior Po Amendment</td><td>Human Approval</td><td>Procurement</td><td class='num'>EUR 5,085</td><td class='num'>31.0</td><td class='num'>EUR-days 157,635</td><td>class median</td></tr><tr><td>4508047126_00050</td><td>Prior Po Amendment</td><td>Human Approval</td><td>Procurement</td><td class='num'>EUR 3,301</td><td class='num'>31.0</td><td class='num'>EUR-days 102,331</td><td>class median</td></tr><tr><td>4508052395_00120</td><td>Gr Ir Count Mismatch</td><td>Escalate</td><td>Warehouse / Goods Receiving</td><td class='num'>EUR 2,926</td><td class='num'>25.0</td><td class='num'>EUR-days 73,067</td><td>overdue</td></tr><tr><td>4508055761_00010</td><td>No Exception</td><td>Escalate</td><td>AP Team</td><td class='num'>EUR 1,825</td><td class='num'>32.4</td><td class='num'>EUR-days 59,130</td><td>class median</td></tr><tr><td>4508050589_00010</td><td>No Exception</td><td>Escalate</td><td>AP Team</td><td class='num'>EUR 657</td><td class='num'>32.4</td><td class='num'>EUR-days 21,287</td><td>class median</td></tr><tr><td>4508053358_00270</td><td>No Exception</td><td>Escalate</td><td>AP Team</td><td class='num'>EUR 157</td><td class='num'>32.4</td><td class='num'>EUR-days 5,087</td><td>class median</td></tr><tr><td>4507040414_00320</td><td>No Exception</td><td>Escalate</td><td>AP Team</td><td class='num'>EUR 74</td><td class='num'>49.0</td><td class='num'>EUR-days 3,623</td><td>overdue</td></tr></tbody></table></div>
+
+<h2>Evidence behind no automatic resolution</h2>
+<p>Historical v1.2 evidence motivating removal of automatic resolution. These are not categorical-confidence or v1.3 live results.</p><table class='data'><thead><tr><th>Measure</th><th>Result</th><th>Scope</th></tr></thead><tbody><tr><th scope='row'>Exception recommendation accuracy</th><td class='num'>19.6%</td><td>46 exception cases</td></tr><tr><th scope='row'>Exception-type accuracy</th><td class='num'>76.5%</td><td>200 v1.2 evaluation cases</td></tr><tr><th scope='row'>Accuracy when 0.8 &lt; numeric confidence &lt; 0.9</th><td class='num'>6.7%</td><td>15 cases; strict interval</td></tr><tr><th scope='row'>v1.2 exception cases auto-resolved correctly</th><td class='num'>0/4</td><td>all v1.2 exception auto-resolutions were incorrect</td></tr></tbody></table>
+<p><a href="decision_log.md">Read the full policy decision log.</a></p>
 
 <h2>Where each case ends up</h2>
 <p>Assigned mechanically. A case counts as agent value only where the rules
@@ -128,6 +137,8 @@ that were eventually cleared, and resolution times are survivor-biased.</li>
 rather than variance-based.</li>
 <li>Human investigation steps between system events are not recorded. They are
 modelled from standard AP practice and treated as assumption.</li>
+<li>The recurring same-class supplier check is designed and unit-tested, but
+has not been evaluated live.</li>
 </ol>
 
 <footer>

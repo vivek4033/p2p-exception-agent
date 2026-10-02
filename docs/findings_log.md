@@ -2,11 +2,12 @@
 
 **Data source: BPI Challenge 2019 (4TU.ResearchData, DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1)**
 
-The 181 live agent responses were generated with numeric confidence and are
-preserved by tag `live-results-numeric-confidence-2026-09-24`. Policy v1.3
-outcomes below are an offline re-score of those cached responses. Categorical
-confidence has not been evaluated live; do not present the v1.3 routing counts
-as a live categorical-confidence result.
+The 181 live agent responses were generated with numeric confidence. Tag
+`live-results-numeric-confidence-2026-09-24` is the closest committed state;
+cache-key verification matched 0 of 181 filenames. Policy v1.3 outcomes below
+are an offline re-score of those cached responses. Categorical confidence has
+not been evaluated live; do not present the v1.3 routing counts as a live
+categorical-confidence result. See [the decision log](decision_log.md).
 
 | Stage | Metric | Value |
 |---|---|---|
@@ -17,7 +18,6 @@ as a live categorical-confidence result.
 | 1 | `blocked_rate_pct` | 22.22 |
 | 1 | `mean_cycle_days` | 71.52 |
 | 1 | `median_cycle_days` | 64.04 |
-| 1 | `mean_block_to_resolution_days` | -19.0 |
 | 1 | `exception_classes` | 6 |
 | 1 | `population_total_cases` | 251734 |
 | 1 | `population_evaluable_cases` | 189462 |

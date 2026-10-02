@@ -10,7 +10,7 @@ sys.path.insert(0, "src")
 import config as C
 
 
-OUT = "docs/index.html"
+OUT = "archive/legacy/mvp_dashboard.html"
 
 
 def esc(value):

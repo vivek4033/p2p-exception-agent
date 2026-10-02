@@ -1,4 +1,4 @@
-# Redesigning P2P Exception Management: Where Should AI Autonomy Stop?
+# P2P Exception Management: AI Recommendations Under Human Authority
 
 Determining empirically, on 1.6M real SAP procurement events, which invoice
 exceptions rules can identify, where an AI agent can support investigation,
@@ -12,10 +12,33 @@ paints multinational; each case is a purchase-order line item.
 
 ## Results
 
-Generated page: `docs/index.html` — run `python run_sample.py`, or publish
-it via Settings → Pages → `main` → `/docs`. Every figure on it is read from the
-pipeline outputs; nothing is typed by hand, and the data-source stamp is printed
-at the top.
+The result is a human-authority workflow, not an autonomous payment release.
+Policy v1.3 routes cases to human review or escalation. Its offline re-score
+covered 181 cached live agent responses; categorical confidence has not been
+evaluated live.
+
+| Finding | Result | Scope |
+|---|---:|---|
+| Agent recommendation accuracy on exceptions | 19.6% | 46 exception cases, cached live responses |
+| Agent exception-type accuracy | 84.5% | 181 cached live responses |
+| Arm A rules coverage | 74.6% | Same 181 cases |
+| Arm A accuracy on covered cases | 71.9% | Same 181 cases |
+| Human review under policy v1.3 | 121 | Offline re-score |
+| Escalation under policy v1.3 | 60 | Offline re-score |
+
+The historical v1.2 evaluation also found 4 exception cases sent to automatic
+resolution, with 0 correct; numeric confidence strictly between 0.8 and 0.9
+was correct in 1 of 15 cases. See [the decision log](docs/decision_log.md) for
+the version-by-version evidence and scope notes.
+
+The historical live run used numeric confidence. Tag
+[`live-results-numeric-confidence-2026-09-24`](https://github.com/vivek4033/p2p-exception-agent/tree/live-results-numeric-confidence-2026-09-24)
+is the closest committed state; key verification matched 0 of the 181 cached
+responses. Categorical confidence and policy v1.3 have not been evaluated live.
+
+Build the main results page with `python build_dashboard.py`, or publish
+`docs/index.html` via Settings → Pages → `main` → `/docs`. Figures come from
+pipeline outputs and the page includes its data-source stamp.
 
 ## Quickstart
 
@@ -42,7 +65,7 @@ python xes_to_parquet.py data/BPI_Challenge_2019.xes
 
 python run_all.py            # mock agent — free, proves the pipeline runs
 python run_all.py --live     # real Claude API, responses cached to disk
-python run_sample.py         # writes the illustrative owner work queue to docs/index.html
+python archive/legacy/run_sample.py  # writes an illustrative sample page, not the main results page
 ```
 
 `src/config.py` is the only file you edit to point this at the real log. Set
@@ -77,7 +100,7 @@ page until the taxonomy and value-field diagnostics have been reviewed.
 | Agent | `src/agent.py` | **Arm B** — Claude API tool calling, 6 tools |
 | Policy engine | `src/policy_engine.py` | **Arm C** — decides authority, no LLM |
 | Tools | `src/tools.py` | Evidence retrieval, evidence hierarchy enforced |
-| Harness | `src/evaluate.py` | Three arms, precision by class, sensitivity, disagreements |
+| Harness | `src/evaluate.py` | Three arms, recommendation accuracy, human routing, disagreements |
 
 ### Why rules run before the agent
 
@@ -88,14 +111,14 @@ agent on everything would make it impossible to say what the AI was worth.
 
 ### Why the policy engine sits outside the model
 
-tested only; it is not authority. Authority comes from a deterministic ERP
-evidence checklist: STRONG, WEAK, or INSUFFICIENT. No numeric score or weight
 The agent recommends an outcome and reports categorical confidence. The policy
-engine receives that proposal, the ERP-sourced exposure, and a deterministic
+engine receives that proposal, ERP-sourced exposure, and a deterministic
 evidence grade. ERP exposure is authoritative; a differing model-reported value
 is recorded as a contradiction. Confidence can lower a case to human review,
 but cannot authorize action. Policy v1.3 authorizes no automatic resolution:
-non-escalated cases require human disposition.
+non-escalated cases require human disposition. The exhaustive test
+`test_policy_v13_cannot_auto_resolve` checks that tested input combinations
+return only `HUMAN_APPROVAL` or `ESCALATE`.
 
 I designed it using a release-strategy-like control pattern: value bands and
 segregation of duties are a deterministic authority table configured outside
@@ -120,10 +143,9 @@ evidence, missing information, agent recommendation, confidence, ERP exposure,
 and policy reason. The dashboard is a view of measured outputs, not a write-back
 channel.
 
-The dashboard is a view of the measured outputs, not a write-back channel.
 It demonstrates system-event investigation; it does not measure AP time
-reduction. Any value case must therefore be a scenario model with assumptions
-labelled separately from measured log facts.
+reduction. Any value case must therefore label its assumptions separately from
+measured log facts.
 
 ---
 
@@ -135,8 +157,9 @@ labelled separately from measured log facts.
    inspection. It does not eliminate it.
 2. **`RESOLVED_WITHOUT_OBSERVED_PO_CORRECTION` records the absence of an
    amendment event.** It does not assign fault to the supplier.
-3. **Vendor identifiers are anonymised.** External lookup is a capability
-   demonstration only, never an evaluated result.
+3. **Vendor identifiers are anonymised.** The recurring same-class supplier
+   check is designed and unit-tested, but not live-evaluated; external lookup is
+   not implemented.
 4. **The manual workflow between system events is modelled, not mined.** The log
    shows system-recorded events; the human investigation steps between them are
    inferred from standard AP practice and labelled as assumption. This is where
@@ -170,33 +193,4 @@ Process layer, not configuration layer. No SAP system was configured; no
 tolerance key was set in SPRO. What this does is read a P2P process, find where
 it breaks, and put a number on it.
 
-## Interview spine
-
-The single question is: **where should AI autonomy stop in P2P exception
-management?** The data reconnaissance, taxonomy, rules baseline, agent arm,
-policy engine, disagreement review, and dashboard all exist to answer that
-question. They are not separate product features.
-
-### Questions to prepare
-
-**Q11 — Where does the output go?**
-
-No path writes a payment-block release back to SAP. Arm C assigns human review
-or escalation; the assigned owner records the disposition.
-
-**Q12 — Can I see it?**
-
-Run `python build_dashboard.py` after a validated pipeline run and open
-`docs/index.html`, or publish `/docs` with GitHub Pages. The page shows the
-human-review and escalation mix, recommendation quality, case buckets, process
-facts, exception mix, and limitations with the data-source stamp visible.
-
-### Live-results provenance
-
-The historical live run used numeric model confidence. Its code state is tagged
-[`live-results-numeric-confidence-2026-09-24`](https://github.com/vivek4033/p2p-exception-agent/tree/live-results-numeric-confidence-2026-09-24).
-The September 24 cache contains 181 live responses. Categorical confidence and
-policy v1.3 are later design changes and have **not been evaluated live**. Cache
-keys include the system prompt, so a live run with the newer prompt will not
-reuse those responses; `scripts/rescore_v12.py` rescales cached data offline and
-does not call the API.
+The main results page is `docs/index.html`; archived demos and diagnostics are under `archive/legacy/`.

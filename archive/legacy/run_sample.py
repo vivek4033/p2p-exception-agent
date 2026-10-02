@@ -20,7 +20,7 @@ SOURCE = Path(C.PARQUET_PATH)
 SAMPLE_PATH = Path("data/sample_5000.parquet")
 QUEUE_PATH = Path("outputs/sample_case_queue.csv")
 SUMMARY_PATH = Path("outputs/sample_summary.csv")
-DASHBOARD_PATH = Path("docs/sample_dashboard.html")
+DASHBOARD_PATH = Path("archive/legacy/sample_dashboard.html")
 
 
 def esc(value):

@@ -1,4 +1,4 @@
-"""Policy v1.2: ordered evidence checklist and decision table."""
+"""Policy v1.3: human review or escalation, with no automatic outcome."""
 
 from dataclasses import dataclass, asdict
 import math
@@ -121,7 +121,7 @@ def decide(case_id, exception_class, exposure_eur,
     if evidence_level == E.WEAK or confidence != L.CONFIDENCE_STRONG:
         return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
                               True, policy_version, near_miss, routed,
-                              "Evidence or agent confidence is not strong enough for autonomy.",
+                              "Evidence or agent confidence requires human review.",
                               "Human approval required: R5 weak evidence or non-strong agent confidence.", evidence_level,
                               "R5", missing_sources, contradictions)
     # R6: a clean case must not receive a contradictory resolution proposal.
