@@ -23,19 +23,6 @@ class ToolBox:
                 C.CASE_COL: "case_id", C.ACT_COL: "activity", C.TS_COL: "timestamp"})
             self.events["case_id"] = self.events["case_id"].astype(str)
             self.events["timestamp"] = pd.to_datetime(self.events["timestamp"], utc=True)
-        self._vendor_stats = self._build_vendor_stats(cases)
-
-    @staticmethod
-    def _build_vendor_stats(cases):
-        if "vendor" not in cases.columns or cases["vendor"].isna().all():
-            return None
-        g = cases.groupby("vendor")
-        return pd.DataFrame({
-            "n_cases": g.size(), "n_blocked": g["was_blocked"].sum(),
-            "block_rate": g["was_blocked"].mean(),
-            "correction_rate": g["post_price_change"].mean(),
-            "total_exposure_eur": g["exposure_eur"].sum(),
-        })
 
     def decision_time(self, case_id):
         if self.events is None:
@@ -95,19 +82,23 @@ class ToolBox:
         if self.events is None:
             n_gr, n_ir = int(r["pre_n_gr"]), int(r["pre_n_ir"])
             amended = bool(r["pre_price_change"] or r["pre_qty_change"])
+            changed_after = bool(r.get("po_changed_after_invoice", False))
         else:
             n_gr = int(visible.activity.isin(C.GR_ACTS).sum())
             n_ir = int((visible.activity == C.A_INVOICE_RECEIPT).sum())
             invoice_ts = visible.loc[visible.activity == C.A_INVOICE_RECEIPT, "timestamp"]
             amended = bool(visible[visible.activity.isin(C.PRICE_CHANGE_ACTS + C.QTY_CHANGE_ACTS)]
                            .timestamp.le(invoice_ts.min()).any()) if not invoice_ts.empty else False
+            changes = visible[visible.activity.isin(C.PRICE_CHANGE_ACTS + C.QTY_CHANGE_ACTS)]
+            changed_after = bool(not invoice_ts.empty
+                                 and changes.timestamp.gt(invoice_ts.min()).any())
         payload = {"case_id": case_id, "net_worth_eur": _f(r["exposure_eur"]),
                    "item_type": r.get("item_type"), "spend_area": r.get("spend_area"),
                    "goods_receipt_count": n_gr, "invoice_receipt_count": n_ir,
                    "gr_ir_count_mismatch": bool(n_gr != n_ir and (n_gr or n_ir)),
                    "po_amended_before_invoice": amended,
                    "goods_receipt_expected": bool(r["gr_expected"]),
-                   "po_changed_after_invoice": False}
+                   "po_changed_after_invoice": changed_after}
         return self._ok(payload, [payload])
 
     def lookup_goods_receipt(self, case_id, as_of=None):
@@ -133,41 +124,54 @@ class ToolBox:
     def lookup_vendor_history(self, case_id, as_of=None):
         r = self._row(case_id)
         vendor = r.get("vendor")
-        if self.events is None or vendor is None:
-            if self._vendor_stats is None or vendor is None or vendor not in self._vendor_stats.index:
-                return self._ok({"vendor": vendor, "available": False}, [])
-            stats = self._vendor_stats.loc[vendor]
-        else:
-            eligible = []
-            cutoff = pd.Timestamp(as_of) if as_of is not None else pd.Timestamp.min.tz_localize("UTC")
-            for other_id, other in self.cases.iterrows():
-                if str(other_id) == str(case_id) or other.get("vendor") != vendor:
-                    continue
-                other_events = self.events[self.events.case_id == str(other_id)]
-                ends = other_events[other_events.activity.isin([C.A_REMOVE_BLOCK, C.A_CLEAR_INVOICE])]
-                if not ends.empty and ends.timestamp.min() < cutoff:
-                    eligible.append(other)
-            if not eligible:
-                return self._ok({"vendor": vendor, "available": False}, [])
-            subset = pd.DataFrame(eligible)
-            stats = {"n_cases": len(subset), "block_rate": subset.was_blocked.mean(),
-                     "correction_rate": subset.post_price_change.mean()}
-        population = self._vendor_stats["block_rate"].mean() if self._vendor_stats is not None else 0
-        block_rate = float(stats["block_rate"])
-        payload = {"vendor": vendor,
-                   "vendor_case_count": int(stats["n_cases"]),
-                   "vendor_block_rate": round(block_rate, 4),
-                   "population_block_rate": round(float(population), 4),
-                   "vendor_correction_rate": round(float(stats["correction_rate"]), 4),
-                   "elevated_vs_population": bool(block_rate > 1.5 * population)}
+        if self.events is None or as_of is None or vendor is None:
+            return self._ok({"vendor": vendor, "available": False,
+                             "reason": "dated prior-case history is unavailable"}, [])
+
+        cutoff = pd.Timestamp(as_of)
+        ended = self.events[
+            self.events.activity.isin([C.A_REMOVE_BLOCK, C.A_CLEAR_INVOICE])
+            & (self.events.timestamp < cutoff)
+        ]
+        prior_ids = set(ended.case_id.astype(str)) - {str(case_id)}
+        prior = self.cases[self.cases.case_id.astype(str).isin(prior_ids)]
+        if prior.empty or "vendor" not in prior:
+            return self._ok({"vendor": vendor, "available": False}, [])
+
+        population_rate = float(prior.was_blocked.mean())
+        vendor_cases = prior[prior.vendor == vendor]
+        if vendor_cases.empty:
+            return self._ok({"vendor": vendor, "available": False}, [])
+        block_rate = float(vendor_cases.was_blocked.mean())
+        current_class = r.get("exception_class")
+        same_class = (vendor_cases[vendor_cases.exception_class == current_class]
+                      if current_class is not None and "exception_class" in vendor_cases
+                      else vendor_cases.iloc[0:0])
+        same_class_rate = (float(same_class.was_blocked.mean())
+                           if not same_class.empty else None)
+        payload = {
+            "vendor": vendor,
+            "vendor_case_count": int(len(vendor_cases)),
+            "vendor_block_rate": round(block_rate, 4),
+            "population_block_rate": round(population_rate, 4),
+            "vendor_correction_rate": round(float(vendor_cases.post_price_change.mean()), 4),
+            "elevated_vs_population": bool(block_rate > 1.5 * population_rate),
+            "same_class_case_count": int(len(same_class)),
+            "same_class_block_rate": (round(same_class_rate, 4)
+                                      if same_class_rate is not None else None),
+            "same_class_correction_rate": (
+                round(float(same_class.post_price_change.mean()), 4)
+                if not same_class.empty else None),
+            "same_class_recurrence": bool(len(same_class) >= 2),
+        }
         return self._ok(payload, [payload])
 
     # ------------------------------------------------------------- L2: policy
     def lookup_policy(self, case_id=None, as_of=None):
         payload = {"price_tolerance_pct": C.PRICE_TOLERANCE_PCT,
                    "quantity_tolerance_pct": C.QTY_TOLERANCE_PCT,
-                   "autonomous_action_cap_eur": C.AUTO_RESOLVE_VALUE_CAP,
                    "escalation_cap_eur": C.APPROVAL_VALUE_CAP,
+                   "human_disposition_required": True,
                    "near_miss_band_pct": C.NEAR_MISS_BAND_PCT,
                    "policy_version": C.POLICY_VERSION}
         return self._ok(payload, [payload])

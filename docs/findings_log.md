@@ -2,6 +2,12 @@
 
 **Data source: BPI Challenge 2019 (4TU.ResearchData, DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1)**
 
+The 181 live agent responses were generated with numeric confidence and are
+preserved by tag `live-results-numeric-confidence-2026-09-24`. Policy v1.3
+outcomes below are an offline re-score of those cached responses. Categorical
+confidence has not been evaluated live; do not present the v1.3 routing counts
+as a live categorical-confidence result.
+
 | Stage | Metric | Value |
 |---|---|---|
 | 0 | `events` | 1595923 |
@@ -24,38 +30,16 @@
 | 1 | `label_derivable_on_blocked_pct` | 99.96 |
 | 2 | `eval_set_size` | 200 |
 | 2 | `expected_tools_frozen_for_cases` | 50 |
-| 3 | `n_cases` | 200 |
-| 3 | `arm_A_coverage` | 0.77 |
-| 3 | `arm_A_accuracy_on_covered` | 0.7403 |
-| 3 | `arm_A_accuracy_overall` | 0.57 |
-| 3 | `arm_B_accuracy` | 0.69 |
-| 3 | `arm_C_automation_rate` | 0.705 |
-| 3 | `arm_C_precision_on_acted` | 0.7376 |
-| 3 | `arm_C_false_automation_rate` | 0.2624 |
-| 3 | `arm_C_escalation_rate` | 0.15 |
-| 3 | `arm_C_approval_rate` | 0.145 |
-| 3 | `tool_recall` | 0.0 |
-| 3 | `tool_precision` | None |
-| 4 | `demoted_class` | NO_EXCEPTION |
-| 4 | `demoted_class_precision` | 0.7376 |
-| 4 | `automated_resolutions_given_up` | 141 |
-| 4 | `disagreements_sampled_for_hand_inspection` | 30 |
-| 4 | `bucket_rules_sufficient_pct` | 57.0 |
-| 4 | `bucket_human_necessary_pct` | 31.0 |
-| 4 | `bucket_ai_added_value_pct` | 12.0 |
-
-## Cycle-Time Reference Table
-
-Generated from closed, non-evaluation cases on 2026-09-21 by
-`scripts/build_cycle_time_reference.py`; values are committed in
-`config/cycle_time_reference.csv` and were not typed by hand.
-
-| Exception class | Median days | n |
-|---|---:|---:|
-| DUPLICATE_INVOICE_RECEIPT_PATTERN | 23.9 | 9,328 |
-| GR_IR_COUNT_MISMATCH | 24.0 | 3,865 |
-| MISSING_GOODS_RECEIPT | 11.9 | 192 |
-| NO_EXCEPTION | 32.4 | 145,421 |
-| PRIOR_PO_AMENDMENT | 31.0 | 14,541 |
-| SEQUENCE_VIOLATION_INVOICE_BEFORE_GR | 2.4 | 15,010 |
-| **__ALL__ fallback** | **28.5** | **188,357** |
+| 3 | `cached_live_responses` | 181 |
+| 3 | `agent_recommendation_accuracy` | 0.586 |
+| 3 | `arm_A_coverage` | 0.746 |
+| 3 | `arm_A_accuracy_on_covered` | 0.719 |
+| 3 | `arm_A_accuracy_overall` | 0.536 |
+| 3 | `arm_C_human_review_count` | 121 |
+| 3 | `arm_C_human_review_rate` | 0.669 |
+| 3 | `arm_C_escalation_count` | 60 |
+| 3 | `arm_C_escalation_rate` | 0.331 |
+| 3 | `agent_disagreements_with_historical_outcome` | 75 |
+| 3 | `agent_disagreement_rate` | 0.414 |
+| 3 | `policy_version` | v1.3 (offline rescore) |
+| 3 | `categorical_confidence_live_evaluated` | false |

@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P2P Exception Autonomy — Results</title>
+<title>P2P Exception Management — Results</title>
 <style>
 :root {
   --paper:#FBFBF9; --ink:#191C1F; --muted:#5C6670; --rule:#D8D6CF;
-  --steel:#3E5566; --auto:#4F7A5C; --approve:#B0803A; --escalate:#9C4A38;
+    --steel:#3E5566; --approve:#B0803A; --escalate:#9C4A38;
 }
 * { box-sizing:border-box }
 body {
@@ -74,40 +74,32 @@ a { color:var(--steel) }
 @media (max-width:520px) { .heronum { font-size:42px } main { padding:32px 18px 64px } }
 </style></head><body><main>
 
-<h1>Where should AI autonomy stop in procure-to-pay exception handling?</h1>
-<p class="sub">Measured on the BPI Challenge 2019 SAP procurement log · legacy case results; v1.2 rescore pending</p>
-<p class="stampline">Data source: BPI Challenge 2019 (4TU.ResearchData, DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1) &middot; Generated 2026-09-21</p>
+<h1>How should AI recommendations enter human resolution?</h1>
+<p class="sub">Measured on the BPI Challenge 2019 SAP procurement log · policy v1.3</p>
+<p class="stampline">Data source: BPI Challenge 2019 (4TU.ResearchData, DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1) &middot; Generated 2026-10-02</p>
 
 
 <div class="hero">
-  <div class="heronum">0%</div>
-  <p class="herosub">of the evaluated population can be closed without a human while holding 95% precision</p>
-  <p class="heronote">The binding constraint is SEQUENCE_VIOLATION_INVOICE_BEFORE_GR.</p>
+  <div class="heronum">0</div>
+  <p class="herosub">automated resolutions authorized under policy v1.3</p>
+  <p class="heronote">121 cases require human review; 60 require escalation.</p>
 </div>
 
-<h2>The trade-off behind that number</h2>
-<p>Every point of precision demanded costs automation. This curve prices that
-exchange, so the threshold becomes a decision a finance owner makes rather than
-one an engineer assumes.</p>
-<svg viewBox="0 0 640 300" class="chart" role="img"
-      aria-label="Automation rate falls as required precision rises">
-      <line x1="64" y1="248.0" x2="616" y2="248.0" class="grid"/><text x="54" y="252.0" class="axlab end">0%</text><line x1="64" y1="192.0" x2="616" y2="192.0" class="grid"/><text x="54" y="196.0" class="axlab end">2%</text><line x1="64" y1="136.0" x2="616" y2="136.0" class="grid"/><text x="54" y="140.0" class="axlab end">4%</text><line x1="64" y1="80.0" x2="616" y2="80.0" class="grid"/><text x="54" y="84.0" class="axlab end">6%</text><line x1="64" y1="24.0" x2="616" y2="24.0" class="grid"/><text x="54" y="28.0" class="axlab end">9%</text>
-      <polyline points="64.0,53.2 300.6,53.2 458.3,248.0 616.0,248.0" class="line"/>
-      <circle cx="64.0" cy="53.2" r="4.5" class="dot"/><text x="64.0" y="39.2" class="dotlab">8%</text><circle cx="300.6" cy="53.2" r="4.5" class="dot"/><text x="300.6" y="39.2" class="dotlab">8%</text><circle cx="458.3" cy="248.0" r="4.5" class="dot"/><text x="458.3" y="234.0" class="dotlab">0%</text><circle cx="616.0" cy="248.0" r="4.5" class="dot"/><text x="616.0" y="234.0" class="dotlab">0%</text><text x="64.0" y="270" class="axlab">90%</text><text x="300.6" y="270" class="axlab">93%</text><text x="458.3" y="270" class="axlab">95%</text><text x="616.0" y="270" class="axlab">97%</text>
-      <text x="64" y="292" class="axtitle">Required precision</text>
-      <text x="18" y="26" class="axtitle">Automated</text>
-    </svg>
+<h2>Policy v1.3 outcomes</h2>
+<p>ERP evidence and policy determine whether a case needs human review or
+escalation. The policy does not authorize automatic resolution.</p>
+<table class='data'><thead><tr><th>Policy outcome</th><th>Cases</th><th>Share</th></tr></thead><tbody><tr><th scope='row'>Human Approval</th><td class='num'>121</td><td class='num'>66.9%</td></tr><tr><th scope='row'>Escalate</th><td class='num'>60</td><td class='num'>33.1%</td></tr></tbody></table>
 
 <h2>Where each case ends up</h2>
 <p>Assigned mechanically. A case counts as agent value only where the rules
 could not resolve it <em>and</em> the agent did — cases both handled go to
 rules, which is deliberately conservative toward the AI.</p>
-<div class='stack'><span class='seg rules_sufficient' style='width:57.00%' title='Rules sufficient 57.0%'></span><span class='seg human_necessary' style='width:31.00%' title='Human necessary 31.0%'></span><span class='seg ai_added_value' style='width:12.00%' title='Agent added value 12.0%'></span></div><ul class='key'><li><i class='sw rules_sufficient'></i>Rules sufficient <b>57.0%</b></li><li><i class='sw human_necessary'></i>Human necessary <b>31.0%</b></li><li><i class='sw ai_added_value'></i>Agent added value <b>12.0%</b></li></ul>
+<div class='stack'><span class='seg rules_sufficient' style='width:53.59%' title='Rules sufficient 53.6%'></span><span class='seg human_necessary' style='width:41.44%' title='Human necessary 41.4%'></span><span class='seg ai_added_value' style='width:4.97%' title='Agent added value 5.0%'></span></div><ul class='key'><li><i class='sw rules_sufficient'></i>Rules sufficient <b>53.6%</b></li><li><i class='sw human_necessary'></i>Human necessary <b>41.4%</b></li><li><i class='sw ai_added_value'></i>Agent added value <b>5.0%</b></li></ul>
 
-<h2>Precision by exception class</h2>
-<p>Any class below the 95% pilot threshold is demoted from autonomous action to
-human approval. That threshold is a design choice, not an industry standard.</p>
-<table class='data'><thead><tr><th>Exception class</th><th>Acted on</th><th>Precision</th></tr></thead><tbody><tr><th scope='row'>NO_EXCEPTION</th><td class='num'>141</td><td class='num below'>73.8%</td></tr></tbody></table>
+<h2>Recommendation quality by exception class</h2>
+<p>Accuracy compares the model's recommendation with the historically observed
+outcome. It does not establish objective correctness or grant authority.</p>
+<table class='data'><thead><tr><th>Exception class</th><th>Cases</th><th>Recommendation accuracy</th></tr></thead><tbody><tr><th scope='row'>DUPLICATE_INVOICE_RECEIPT_PATTERN</th><td class='num'>10</td><td class='num'>0.0%</td></tr><tr><th scope='row'>GR_IR_COUNT_MISMATCH</th><td class='num'>4</td><td class='num'>0.0%</td></tr><tr><th scope='row'>MISSING_GOODS_RECEIPT</th><td class='num'>1</td><td class='num'>0.0%</td></tr><tr><th scope='row'>NO_EXCEPTION</th><td class='num'>135</td><td class='num'>71.9%</td></tr><tr><th scope='row'>PRIOR_PO_AMENDMENT</th><td class='num'>15</td><td class='num'>53.3%</td></tr><tr><th scope='row'>SEQUENCE_VIOLATION_INVOICE_BEFORE_GR</th><td class='num'>16</td><td class='num'>6.2%</td></tr></tbody></table>
 
 <h2>What the process looks like</h2>
 <div class="facts">

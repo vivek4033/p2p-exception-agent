@@ -1,8 +1,8 @@
 # Redesigning P2P Exception Management: Where Should AI Autonomy Stop?
 
-Determining empirically, on 1.5M real SAP procurement events, which invoice
-exceptions should be closed by deterministic rules, which need an AI agent to
-investigate, and which must stay under human authority.
+Determining empirically, on 1.6M real SAP procurement events, which invoice
+exceptions rules can identify, where an AI agent can support investigation,
+and which decisions must stay under human authority.
 
 **Data:** BPI Challenge 2019 — van Dongen, B.F. (2019), 4TU.ResearchData,
 DOI 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1. A Dutch coatings and
@@ -88,12 +88,14 @@ agent on everything would make it impossible to say what the AI was worth.
 
 ### Why the policy engine sits outside the model
 
-The agent can be completely confident and completely correct and still not be
-permitted to act. Permission is a function of exception class and transaction
-value, set outside the model. The model's confidence is logged and calibration-
 tested only; it is not authority. Authority comes from a deterministic ERP
 evidence checklist: STRONG, WEAK, or INSUFFICIENT. No numeric score or weight
-is used to permit action.
+The agent recommends an outcome and reports categorical confidence. The policy
+engine receives that proposal, the ERP-sourced exposure, and a deterministic
+evidence grade. ERP exposure is authoritative; a differing model-reported value
+is recorded as a contradiction. Confidence can lower a case to human review,
+but cannot authorize action. Policy v1.3 authorizes no automatic resolution:
+non-escalated cases require human disposition.
 
 I designed it using a release-strategy-like control pattern: value bands and
 segregation of duties are a deterministic authority table configured outside
@@ -112,19 +114,11 @@ Nothing sourced outside the ERP can clear a payment.
 
 ### The output loop
 
-The pipeline has three output paths. A deterministic rule can produce an
-`AUTO_RESOLVE` decision only where the policy engine permits it. That is the
-single path that could eventually write back to SAP: release the payment block
-using the case ID, authorising policy version, and audit record, analogous to
-the API equivalent of an MRBR action. The implementation is a design target,
-not a live SAP integration.
-
-Agent investigation and human-approval decisions write no SAP transaction.
-They produce a case packet for a work queue, including evidence, missing
-information, recommendation, model confidence for calibration, and the reason
-authority was not granted. A pilot should begin in shadow mode, measure
-disagreements, and grant autonomy per exception class only where observed
-precision supports it.
+The pipeline produces human-review or escalation decisions. Neither the agent
+nor the policy engine writes a SAP transaction. Each case packet includes the
+evidence, missing information, agent recommendation, confidence, ERP exposure,
+and policy reason. The dashboard is a view of measured outputs, not a write-back
+channel.
 
 The dashboard is a view of the measured outputs, not a write-back channel.
 It demonstrates system-event investigation; it does not measure AP time
@@ -147,13 +141,14 @@ labelled separately from measured log facts.
    shows system-recorded events; the human investigation steps between them are
    inferred from standard AP practice and labelled as assumption. This is where
    the cycle-time savings estimate is least certain.
-5. **The 95% precision threshold is a design choice, not an industry standard**
-   — which is why `outputs/threshold_sensitivity.csv` reports the trade-off
-   curve across 90/93/95/97 rather than a single point.
-6. **Payment-block resolution as a bottleneck is a known finding** in published
-   analyses of this log. The contribution here is the agent design and the
-   autonomy boundary, not the bottleneck discovery.
-7. **Single dataset, single industry, single country.** No claim of
+5. **Time savings are not present in the event log.** `MINUTES_SAVED_PER_CASE`
+   is unset until measured in a shadow pilot; no time-savings figure is claimed.
+6. **Early-payment discount capture is not measured.** The discount field is
+   retained as an explicit assumption and is excluded from the current value model.
+7. **Payment-block resolution as a bottleneck is a known finding** in published
+   analyses of this log. The contribution here is agent-supported human
+   investigation and evidence-based routing, not the bottleneck discovery.
+8. **Single dataset, single industry, single country.** No claim of
    generalisability beyond direction.
 
 ---
@@ -186,13 +181,22 @@ question. They are not separate product features.
 
 **Q11 — Where does the output go?**
 
-Only a policy-approved `AUTO_RESOLVE` path could write a payment-block release
-back to SAP. Investigation and approval paths produce human work-queue packets
-and write nothing autonomously.
+No path writes a payment-block release back to SAP. Arm C assigns human review
+or escalation; the assigned owner records the disposition.
 
 **Q12 — Can I see it?**
 
 Run `python build_dashboard.py` after a validated pipeline run and open
 `docs/index.html`, or publish `/docs` with GitHub Pages. The page shows the
-autonomy boundary, sensitivity curve, case buckets, precision, process facts,
-exception mix, and limitations with the data-source stamp visible.
+human-review and escalation mix, recommendation quality, case buckets, process
+facts, exception mix, and limitations with the data-source stamp visible.
+
+### Live-results provenance
+
+The historical live run used numeric model confidence. Its code state is tagged
+[`live-results-numeric-confidence-2026-09-24`](https://github.com/vivek4033/p2p-exception-agent/tree/live-results-numeric-confidence-2026-09-24).
+The September 24 cache contains 181 live responses. Categorical confidence and
+policy v1.3 are later design changes and have **not been evaluated live**. Cache
+keys include the system prompt, so a live run with the newer prompt will not
+reuse those responses; `scripts/rescore_v12.py` rescales cached data offline and
+does not call the API.

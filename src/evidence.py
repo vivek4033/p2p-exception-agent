@@ -1,6 +1,7 @@
 """Deterministic ERP evidence checklist for policy authority."""
 
 from dataclasses import dataclass, asdict
+import math
 
 import labels as L
 
@@ -62,8 +63,23 @@ def _satisfies(result, must_have_records):
     return True
 
 
-def evaluate_evidence(exception_type, tool_results, near_miss=False):
-    """Return a checklist; model confidence is never consulted."""
+def exposure_contradictions(agent_exposure, erp_exposure):
+    """Flag a finite model-reported value that differs from the ERP value."""
+    try:
+        agent_value = float(agent_exposure)
+        erp_value = float(erp_exposure)
+    except (TypeError, ValueError):
+        return []
+    if not math.isfinite(agent_value) or not math.isfinite(erp_value):
+        return []
+    if round(agent_value, 2) != round(erp_value, 2):
+        return ["AGENT_EXPOSURE_MISMATCH"]
+    return []
+
+
+def evaluate_evidence(exception_type, tool_results, near_miss=False,
+                      additional_contradictions=()):
+    """Return the deterministic evidence grade; confidence is a separate policy gate."""
     tool_results = tool_results or {}
     requirements = REQUIRED_TOOLS.get(exception_type, REQUIRED_TOOLS[L.NO_EXCEPTION])
     missing = [name for name, must_have_records in requirements.items()
@@ -76,6 +92,7 @@ def evaluate_evidence(exception_type, tool_results, near_miss=False):
         contradictions.append("INVOICE_BEFORE_GR")
     if facts["gr_ir_count_mismatch"]:
         contradictions.append("GR_IR_QUANTITY_MISMATCH")
+    contradictions.extend(c for c in additional_contradictions if c not in contradictions)
 
     if missing or len(contradictions) >= 2:
         level = INSUFFICIENT

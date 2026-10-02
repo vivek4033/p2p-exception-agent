@@ -3,7 +3,7 @@ case_packet.py — the dossier a human receives.
 
 The point of the packet: the human's job becomes DECIDING, not INVESTIGATING.
 It states what was checked, what was found, what is missing, what is
-recommended, why it was not auto-resolved, and what action is required.
+recommended, why it requires human review, and what action is required.
 
 Counterparty notification is prepared here and never sent autonomously.
 
@@ -70,8 +70,8 @@ def build(case_row, agent_result, policy_decision, rule_trace=None):
         "stated_confidence": agent_result.get("confidence"),
         "evidence_complete": agent_result.get("evidence_complete"),
         "decision": policy_decision.decision,
-        "why_not_auto_resolved": (policy_decision.counterfactual_check
-                                  if policy_decision.decision != P.AUTO_RESOLVE else None),
+        "human_review_reason": (policy_decision.counterfactual_check
+                    if policy_decision.decision == P.HUMAN_APPROVAL else None),
         "policy_version": policy_decision.policy_version,
         "evidence_level": policy_decision.evidence_level,
         "rule_fired": policy_decision.rule_fired,
@@ -90,8 +90,6 @@ def build(case_row, agent_result, policy_decision, rule_trace=None):
 
 
 def _action(pd_):
-    if pd_.decision == P.AUTO_RESOLVE:
-        return "None. Resolved under delegated authority; recorded in the audit log."
     if pd_.decision == P.HUMAN_APPROVAL:
         return f"Review the recommendation and approve or reject. Owner: {pd_.routed_to}."
     return f"Investigate and decide. Escalated to: {pd_.routed_to}."
@@ -150,7 +148,7 @@ def render_text(p):
     for e in p["evidence"]:
         A(f"  - {e}")
     A("")
-    A(f"RECOMMENDATION      : {p['recommendation']}  (model confidence {p['stated_confidence']}; calibration only)")
+    A(f"RECOMMENDATION      : {p['recommendation']}  (model confidence {p['stated_confidence']})")
     A(f"EVIDENCE LEVEL      : {p['evidence_level']}")
     A(f"RULE FIRED          : {p['rule_fired']}")
     if p["missing_sources"]:
@@ -158,8 +156,8 @@ def render_text(p):
     if p["contradictions"]:
         A(f"CONTRADICTIONS      : {', '.join(p['contradictions'])}")
     A(f"POLICY DECISION     : {p['decision']}  (policy {p['policy_version']})")
-    if p["why_not_auto_resolved"]:
-        A(f"WHY NOT AUTONOMOUS  : {p['why_not_auto_resolved']}")
+    if p["human_review_reason"]:
+        A(f"HUMAN REVIEW REASON : {p['human_review_reason']}")
     if p["near_miss"]:
         A("NEAR MISS           : sits inside the boundary band of a tolerance threshold")
     A("")

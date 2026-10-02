@@ -17,6 +17,8 @@ exist, the corresponding class silently returns zero cases and audit_taxonomy()
 reports it — it does not fabricate.
 """
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -49,6 +51,26 @@ CONFIDENCE_INTERMEDIATE = "INTERMEDIATE"
 CONFIDENCE_WEAK = "WEAK"
 CONFIDENCE_LEVELS = (CONFIDENCE_STRONG, CONFIDENCE_INTERMEDIATE,
                      CONFIDENCE_WEAK)
+
+
+def normalize_confidence(value):
+    """Normalize categorical values and migrate archived numeric confidence."""
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        return normalized if normalized in CONFIDENCE_LEVELS else CONFIDENCE_WEAK
+    if isinstance(value, bool):
+        return CONFIDENCE_WEAK
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return CONFIDENCE_WEAK
+    if not math.isfinite(numeric):
+        return CONFIDENCE_WEAK
+    if numeric >= 0.8:
+        return CONFIDENCE_STRONG
+    if numeric >= 0.6:
+        return CONFIDENCE_INTERMEDIATE
+    return CONFIDENCE_WEAK
 
 # retained so older references do not break
 OUT_PO_CORRECTION = OUT_PRICE_CORRECTION

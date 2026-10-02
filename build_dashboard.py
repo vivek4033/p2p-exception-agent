@@ -10,9 +10,8 @@ server, no dependencies. Open it locally, or publish it with GitHub Pages
     https://<user>.github.io/p2p-exception-agent/
 
 Design intent: this is an audit exhibit, not a product dashboard. It reads
-top-down like a finding memo — the autonomy boundary first, the trade-off that
-produced it second, the evidence beneath, and the limitations last rather than
-hidden. Tier colours are semantic (they encode authority level), not decoration.
+top-down like a finding memo — policy outcomes first, recommendation quality
+second, the evidence beneath, and the limitations last rather than hidden.
 
 If the run was on synthetic data, the page says so in a way that cannot be
 cropped out of a screenshot.
@@ -35,53 +34,17 @@ def esc(s):
     return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
-# --------------------------------------------------------------------- charts
-def sensitivity_svg(sens):
-    """Automation rate against required precision. The project's key exhibit."""
-    if sens is None or sens.empty:
-        return "<p class='pending'>Not yet computed. Run the three arms first.</p>"
-
-    d = sens.dropna(subset=["automation_rate"]).sort_values("precision_threshold")
-    if d.empty:
-        return "<p class='pending'>No permitted classes at any threshold tested.</p>"
-
-    W, H = 640, 300
-    PL, PR, PT, PB = 64, 24, 24, 52
-    xs = d["precision_threshold"].tolist()
-    ys = (d["automation_rate"] * 100).tolist()
-    x0, x1 = min(xs), max(xs)
-    y1 = max(max(ys), 1) * 1.15
-
-    def px(v):
-        return PL + (v - x0) / (x1 - x0 or 1) * (W - PL - PR)
-
-    def py(v):
-        return H - PB - v / y1 * (H - PT - PB)
-
-    pts = " ".join(f"{px(a):.1f},{py(b):.1f}" for a, b in zip(xs, ys))
-    dots = "".join(
-        f'<circle cx="{px(a):.1f}" cy="{py(b):.1f}" r="4.5" class="dot"/>'
-        f'<text x="{px(a):.1f}" y="{py(b)-14:.1f}" class="dotlab">{b:.0f}%</text>'
-        for a, b in zip(xs, ys))
-    xlab = "".join(
-        f'<text x="{px(a):.1f}" y="{H-PB+22}" class="axlab">{a:.0%}</text>'
-        for a in xs)
-
-    grid = ""
-    for frac in (0, .25, .5, .75, 1):
-        v = y1 * frac
-        grid += (f'<line x1="{PL}" y1="{py(v):.1f}" x2="{W-PR}" y2="{py(v):.1f}" '
-                 f'class="grid"/>'
-                 f'<text x="{PL-10}" y="{py(v)+4:.1f}" class="axlab end">{v:.0f}%</text>')
-
-    return f"""<svg viewBox="0 0 {W} {H}" class="chart" role="img"
-      aria-label="Automation rate falls as required precision rises">
-      {grid}
-      <polyline points="{pts}" class="line"/>
-      {dots}{xlab}
-      <text x="{PL}" y="{H-8}" class="axtitle">Required precision</text>
-      <text x="{PL-46}" y="{PT+2}" class="axtitle">Automated</text>
-    </svg>"""
+# ------------------------------------------------------------ policy outcomes
+def routing_table(cases):
+    if cases is None or cases.empty or "C_decision" not in cases:
+        return "<p class='pending'>Run the v1.3 rescore to see policy outcomes.</p>"
+    counts = cases["C_decision"].value_counts()
+    rows = "".join(
+        f"<tr><th scope='row'>{esc(decision.replace('_', ' ').title())}</th>"
+        f"<td class='num'>{count:,}</td><td class='num'>{count / len(cases):.1%}</td></tr>"
+        for decision, count in counts.items())
+    return ("<table class='data'><thead><tr><th>Policy outcome</th><th>Cases</th>"
+            f"<th>Share</th></tr></thead><tbody>{rows}</tbody></table>")
 
 
 def bar_table(df, label_col, value_col, fmt="{:.0f}"):
@@ -103,11 +66,9 @@ def build():
 
     findings = read("findings_log.csv")
     exc = read("exception_summary.csv")
-    sens = read("threshold_sensitivity.csv")
-    prec = read("precision_by_class.csv")
-    cases = read("case_results_v12.csv")
-    cases_source = "v1.2 evidence checklist" if cases is not None else "legacy case results; v1.2 rescore pending"
-    cases = cases if cases is not None else read("case_results.csv")
+    prec = read("recommendation_quality_by_class.csv")
+    cases = read("case_results_v13.csv")
+    cases_source = "policy v1.3" if cases is not None else "historical results; v1.3 rescore pending"
     vend = read("vendor_concentration.csv")
 
     stamp = "unknown"
@@ -121,25 +82,17 @@ def build():
         m = findings[findings["metric"] == metric]
         return str(m["value"].iloc[0]) if len(m) else default
 
-    # headline: the autonomy boundary
-    boundary = None
-    if sens is not None and not sens.empty:
-        row = sens[sens["precision_threshold"] == 0.95]
-        if len(row) and pd.notna(row["automation_rate"].iloc[0]):
-            boundary = row.iloc[0]
-
-    if boundary is not None:
-        hero_num = f"{boundary['automation_rate']*100:.0f}%"
-        hero_sub = ("of the evaluated population can be closed without a human "
-                    "while holding 95% precision")
-        binding = boundary.get("binding_constraint")
-        hero_note = (f"The binding constraint is {esc(binding)}."
-                     if isinstance(binding, str) and binding else "")
+    if cases is not None and not cases.empty:
+        review_count = int((cases["C_decision"] == "HUMAN_APPROVAL").sum())
+        escalation_count = int((cases["C_decision"] == "ESCALATE").sum())
+        hero_num = "0"
+        hero_sub = "automated resolutions authorized under policy v1.3"
+        hero_note = (f"{review_count:,} cases require human review; "
+                     f"{escalation_count:,} require escalation.")
     else:
-        hero_num = "not yet"
-        hero_sub = ("The three-arm experiment has not been run on the rebuilt "
-                    "taxonomy. No autonomy boundary is claimed.")
-        hero_note = ""
+        hero_num = "0"
+        hero_sub = "automated resolutions authorized under policy v1.3"
+        hero_note = "Categorical confidence has not yet been evaluated live."
 
     banner = ("<div class='banner'>Synthetic test fixture — these figures test "
               "the harness and are not findings.</div>" if synthetic else "")
@@ -169,12 +122,11 @@ def build():
     if prec is not None and not prec.empty:
         rows = "".join(
             f"<tr><th scope='row'>{esc(r['exception_class'])}</th>"
-            f"<td class='num'>{int(r['n_acted']):,}</td>"
-            f"<td class='num {'below' if r['precision'] < .95 else ''}'>"
-            f"{r['precision']*100:.1f}%</td></tr>"
+            f"<td class='num'>{int(r['n_cases']):,}</td>"
+            f"<td class='num'>{r['recommendation_accuracy']*100:.1f}%</td></tr>"
             for _, r in prec.iterrows())
         prec_block = (f"<table class='data'><thead><tr><th>Exception class</th>"
-                      f"<th>Acted on</th><th>Precision</th></tr></thead>"
+                      f"<th>Cases</th><th>Recommendation accuracy</th></tr></thead>"
                       f"<tbody>{rows}</tbody></table>")
 
     vend_block = ""
@@ -185,14 +137,16 @@ def build():
                       f"Exception concentration is a supplier-management finding, "
                       f"not a technical one.</p>")
 
+    outcomes = routing_table(cases)
+
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>P2P Exception Autonomy — Results</title>
+<title>P2P Exception Management — Results</title>
 <style>
 :root {{
   --paper:#FBFBF9; --ink:#191C1F; --muted:#5C6670; --rule:#D8D6CF;
-  --steel:#3E5566; --auto:#4F7A5C; --approve:#B0803A; --escalate:#9C4A38;
+    --steel:#3E5566; --approve:#B0803A; --escalate:#9C4A38;
 }}
 * {{ box-sizing:border-box }}
 body {{
@@ -261,7 +215,7 @@ a {{ color:var(--steel) }}
 @media (max-width:520px) {{ .heronum {{ font-size:42px }} main {{ padding:32px 18px 64px }} }}
 </style></head><body><main>
 
-<h1>Where should AI autonomy stop in procure-to-pay exception handling?</h1>
+<h1>How should AI recommendations enter human resolution?</h1>
 <p class="sub">Measured on the BPI Challenge 2019 SAP procurement log · {esc(cases_source)}</p>
 <p class="stampline">Data source: {esc(stamp)} &middot; Generated {date.today().isoformat()}</p>
 {banner}
@@ -272,11 +226,10 @@ a {{ color:var(--steel) }}
   <p class="heronote">{hero_note}</p>
 </div>
 
-<h2>The trade-off behind that number</h2>
-<p>Every point of precision demanded costs automation. This curve prices that
-exchange, so the threshold becomes a decision a finance owner makes rather than
-one an engineer assumes.</p>
-{sensitivity_svg(sens)}
+<h2>Policy v1.3 outcomes</h2>
+<p>ERP evidence and policy determine whether a case needs human review or
+escalation. The policy does not authorize automatic resolution.</p>
+{outcomes}
 
 <h2>Where each case ends up</h2>
 <p>Assigned mechanically. A case counts as agent value only where the rules
@@ -284,9 +237,9 @@ could not resolve it <em>and</em> the agent did — cases both handled go to
 rules, which is deliberately conservative toward the AI.</p>
 {buckets}
 
-<h2>Precision by exception class</h2>
-<p>Any class below the 95% pilot threshold is demoted from autonomous action to
-human approval. That threshold is a design choice, not an industry standard.</p>
+<h2>Recommendation quality by exception class</h2>
+<p>Accuracy compares the model's recommendation with the historically observed
+outcome. It does not establish objective correctness or grant authority.</p>
 {prec_block}
 
 <h2>What the process looks like</h2>

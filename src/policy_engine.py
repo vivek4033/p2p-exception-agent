@@ -5,18 +5,18 @@ import math
 from typing import Optional
 
 import config as C
+if not hasattr(C, "APPROVAL_VALUE_CAP"):
+    from src import config as C
 import labels as L
 import evidence as E
 
-AUTO_RESOLVE = "AUTO_RESOLVE"
 HUMAN_APPROVAL = "HUMAN_APPROVAL"
 ESCALATE = "ESCALATE"
-AUTO_CAP_EUR = 5_000
-ESCALATE_CAP_EUR = 50_000
-POLICY_VERSION = "v1.2"
+ESCALATE_CAP_EUR = C.APPROVAL_VALUE_CAP
+POLICY_VERSION = "v1.3"
 
-MATRIX_V1_0 = {
-    L.NO_EXCEPTION: {"tier": AUTO_RESOLVE, "justification": "No structural irregularity in the ERP evidence."},
+MATRIX_V1_3 = {
+    L.NO_EXCEPTION: {"tier": HUMAN_APPROVAL, "justification": "No structural irregularity was identified; human disposition is still required."},
     L.PRIOR_AMENDMENT: {"tier": HUMAN_APPROVAL, "justification": "The purchase order was amended before invoicing."},
     L.GR_IR_MISMATCH: {"tier": HUMAN_APPROVAL, "justification": "Goods receipt and invoice receipt counts disagree."},
     L.SEQUENCE_VIOLATION: {"tier": HUMAN_APPROVAL, "justification": "Invoice arrived before any goods receipt."},
@@ -25,6 +25,7 @@ MATRIX_V1_0 = {
 }
 
 ROUTING = {
+    L.NO_EXCEPTION: "AP Team",
     L.PRIOR_AMENDMENT: "Procurement",
     L.GR_IR_MISMATCH: "Warehouse / Goods Receiving",
     L.DUPLICATE: "AP Manager",
@@ -58,8 +59,8 @@ def decide(case_id, exception_class, exposure_eur,
            evidence_level=E.INSUFFICIENT, near_miss=False, matrix=None,
            policy_version=None, missing_sources=(), contradictions=(),
            confidence=None, recommendation=None) -> PolicyDecision:
-    """Apply strict-first rules R1-R6 to the agent proposal and policy facts."""
-    matrix = matrix or MATRIX_V1_0
+    """Apply policy v1.3; every non-escalated recommendation requires a human."""
+    matrix = matrix or MATRIX_V1_3
     policy_version = policy_version or POLICY_VERSION
     row = matrix.get(exception_class)
     routed = ROUTING.get(exception_class)
@@ -72,17 +73,14 @@ def decide(case_id, exception_class, exposure_eur,
         exposure_eur = None
     if exposure_eur is not None and not math.isfinite(exposure_eur):
         exposure_eur = None
-    if isinstance(confidence, str):
-        confidence = confidence.strip().upper()
-    if confidence not in L.CONFIDENCE_LEVELS:
-        confidence = L.CONFIDENCE_WEAK
+    confidence = L.normalize_confidence(confidence)
 
     recommendations = {
         L.OUT_AUTO_CLEARED, L.OUT_PRICE_CORRECTION, L.OUT_QTY_CORRECTION,
         L.OUT_NO_CORRECTION, L.OUT_CANCELLED, L.OUT_UNRESOLVED,
     }
 
-    # R1: missing/unknown evidence or value always escalates.
+    # R1: missing/unknown evidence, value, or actionable recommendation escalates.
     if (evidence_level == E.INSUFFICIENT or exposure_eur is None
             or recommendation not in recommendations
             or recommendation == L.OUT_UNRESOLVED):
@@ -90,78 +88,72 @@ def decide(case_id, exception_class, exposure_eur,
                               False, policy_version, near_miss,
                               routed or "AP Manager",
                               "Evidence, exposure, or agent recommendation is insufficient.",
-                              "Not auto-resolved: R1 evidence, value, or recommendation gate.", evidence_level,
+                              "Escalated: R1 evidence, value, or recommendation gate.", evidence_level,
                               "R1", missing_sources, contradictions)
-    # R2: value circuit breaker outranks class routing.
+    # R2: the authoritative ERP value circuit breaker.
     if exposure_eur > ESCALATE_CAP_EUR:
         return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
                               True, policy_version, near_miss, routed or "Finance",
                               "Transaction value exceeds the escalation cap.",
-                              "Not auto-resolved: R2 value circuit breaker.", evidence_level,
+                              "Escalated: R2 ERP value circuit breaker.", evidence_level,
                               "R2", missing_sources, contradictions)
-    # R3: class must be explicitly permitted for autonomy.
+    # R3: a PO changed after invoice receipt is a control breach.
+    if "PO_CHANGED_AFTER_INVOICE" in contradictions:
+        return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed or "AP Manager",
+                              "The purchase order changed after invoice receipt.",
+                              "Escalated: R3 post-invoice PO change requires investigation.", evidence_level,
+                              "R3", missing_sources, contradictions)
+    # R4: unknown classes and classes designated for escalation stay escalated.
     if row is None:
         return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
                               True, policy_version, near_miss, routed or "AP Manager",
                               "Exception class is outside the taxonomy.",
-                              "Not auto-resolved: R3 unknown taxonomy class.", evidence_level,
-                              "R3", missing_sources, contradictions)
-    if row["tier"] != AUTO_RESOLVE:
-        tier = row["tier"]
-        return PolicyDecision(case_id, tier, exception_class, exposure_eur,
-                              True, policy_version, near_miss, routed or "AP Manager",
-                              "Exception class is outside delegated authority.",
-                              f"Not auto-resolved: R3 class tier is {tier}.", evidence_level,
-                              "R3", missing_sources, contradictions)
-    # R4: autonomy is limited to the lower value band.
-    if exposure_eur > AUTO_CAP_EUR:
-        return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
-                              True, policy_version, near_miss, routed,
-                              "Exposure exceeds the autonomous action cap.",
-                              "Not auto-resolved: R4 autonomous value band.", evidence_level,
+                              "Escalated: R4 unknown taxonomy class.", evidence_level,
                               "R4", missing_sources, contradictions)
-    # R5: either weak evidence or non-strong model confidence requires review.
+    if row["tier"] == ESCALATE:
+        return PolicyDecision(case_id, ESCALATE, exception_class, exposure_eur,
+                              True, policy_version, near_miss, routed or "AP Manager",
+                              "Exception class is designated for escalation.",
+                              "Escalated: R4 class policy requires review.", evidence_level,
+                              "R4", missing_sources, contradictions)
+    # R5: weak evidence or non-strong model confidence requires human review.
     if evidence_level == E.WEAK or confidence != L.CONFIDENCE_STRONG:
         return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
                               True, policy_version, near_miss, routed,
                               "Evidence or agent confidence is not strong enough for autonomy.",
-                              "Not auto-resolved: R5 weak evidence or non-strong agent confidence.", evidence_level,
+                              "Human approval required: R5 weak evidence or non-strong agent confidence.", evidence_level,
                               "R5", missing_sources, contradictions)
-    if row["tier"] == AUTO_RESOLVE and recommendation != L.OUT_AUTO_CLEARED:
+    # R6: a clean case must not receive a contradictory resolution proposal.
+    if (exception_class == L.NO_EXCEPTION
+            and recommendation != L.OUT_AUTO_CLEARED):
         return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
                               True, policy_version, near_miss, routed or "AP Manager",
-                              "The agent recommendation is outside delegated authority.",
-                              "Not auto-resolved: R5 recommendation requires human review.", evidence_level,
-                              "R5", missing_sources, contradictions)
-    # R6: all gates passed.
-    return PolicyDecision(case_id, AUTO_RESOLVE, exception_class, exposure_eur,
-                          True, policy_version, near_miss, None,
+                              "The recommendation conflicts with the clean-case evidence.",
+                              "Human approval required: R6 recommendation mismatch.", evidence_level,
+                              "R6", missing_sources, contradictions)
+    # R7: no automated resolution is authorized by this policy version.
+    return PolicyDecision(case_id, HUMAN_APPROVAL, exception_class, exposure_eur,
+                          True, policy_version, near_miss, routed or "AP Manager",
                           row["justification"],
-                          "Auto-resolved: R6 strong evidence, permitted class, and value within cap.",
-                          evidence_level, "R6", missing_sources, contradictions)
-
-
-def demote(matrix, exception_class, to_tier=HUMAN_APPROVAL, reason=""):
-    new = {k: dict(v) for k, v in matrix.items()}
-    if exception_class in new:
-        new[exception_class]["tier"] = to_tier
-        new[exception_class]["justification"] += f" DEMOTED v1.1: {reason}"
-    return new
+                          "Human approval required: R7 automated resolution is not authorized.",
+                          evidence_level, "R7", missing_sources, contradictions)
 
 
 def matrix_to_markdown(matrix, version):
-    lines = [f"# Decision-Rights Matrix — {version}", "",
+    lines = [f"# Decision Rights Matrix - {version}", "",
              "| Exception class | Tier | Routed to | Justification |", "|---|---|---|---|"]
     for key, value in matrix.items():
         lines.append(f"| {key} | {value['tier']} | {ROUTING.get(key, '—')} | {value['justification']} |")
-    lines += ["", "**Value bands (policy, not findings):**",
-              f"- Autonomous action cap: EUR {AUTO_CAP_EUR:,.0f}",
-              f"- Escalation cap: EUR {ESCALATE_CAP_EUR:,.0f}", "",
+    lines += ["", "**Value band (policy, not a finding):**",
+              f"- Exposure above EUR {ESCALATE_CAP_EUR:,.0f} -> ESCALATE",
+              "- All other non-escalated cases require HUMAN_APPROVAL; this policy authorizes no automatic resolution.", "",
               "**Ordered policy rules:**",
-              "- R1: insufficient evidence or unknown value -> ESCALATE",
-              "- R2: value above EUR 50,000 -> ESCALATE",
-              "- R3: class not auto-permitted -> matrix outcome",
-              "- R4: value above EUR 5,000 -> HUMAN_APPROVAL",
-              "- R5: weak evidence -> HUMAN_APPROVAL",
-              "- R6: all checks pass -> AUTO_RESOLVE"]
+              "- R1: insufficient evidence, unknown ERP value, or unresolved recommendation -> ESCALATE",
+              "- R2: ERP exposure above EUR 50,000 -> ESCALATE",
+              "- R3: purchase order changed after invoice receipt -> ESCALATE",
+              "- R4: unknown class or class designated for escalation -> ESCALATE",
+              "- R5: weak evidence or non-strong model confidence -> HUMAN_APPROVAL",
+              "- R6: recommendation conflicts with clean-case evidence -> HUMAN_APPROVAL",
+              "- R7: all remaining cases -> HUMAN_APPROVAL"]
     return "\n".join(lines)

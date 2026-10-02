@@ -33,7 +33,8 @@ def expected_days(exception_type, days_waited, medians):
 
 def build_queue(cases, intervals, medians, as_of):
     as_of = pd.Timestamp(as_of)
-    queue = cases[cases.decision != "AUTO_RESOLVE"].merge(intervals, on="case_id")
+    queue = cases[cases.decision.isin(["HUMAN_APPROVAL", "ESCALATE"])].merge(
+        intervals, on="case_id")
     queue = queue[(queue.start <= as_of) & (queue.end.isna() | (queue.end > as_of))].copy()
     queue["days_waited"] = (as_of - queue.start).dt.total_seconds() / 86400
     if queue.empty:

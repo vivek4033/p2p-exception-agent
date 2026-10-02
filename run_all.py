@@ -150,9 +150,9 @@ def main():
     log("expected_tools_frozen_for_cases", len(expected), 2)
 
     with open("docs/decision_rights.md", "w") as fh:
-        fh.write(P.matrix_to_markdown(P.MATRIX_V1_0, "v1.0") +
+        fh.write(P.matrix_to_markdown(P.MATRIX_V1_3, P.POLICY_VERSION) +
                  f"\n\n_Data source: {C.stamp()}_\n")
-    print("  wrote docs/decision_rights.md (v1.0)")
+    print(f"  wrote docs/decision_rights.md ({P.POLICY_VERSION})")
 
     # ---------------------------------------------------------------- STAGE 3
     hr("STAGE 3 — Three arms")
@@ -190,38 +190,13 @@ def main():
         print(f"  HUMAN QUEUE NOT GENERATED: {type(exc).__name__}: {exc}")
 
     # ---------------------------------------------------------------- STAGE 4
-    hr("STAGE 4 — Measurement and tightening")
-    prec = E.precision_by_class(res)
-    print(prec.to_string(index=False))
-    prec.to_csv("outputs/precision_by_class.csv", index=False)
-
-    dem = E.find_demotion(prec)
-    matrix, version = P.MATRIX_V1_0, "v1.2"
-    if dem:
-        print(f"\n  DEMOTION: {dem['exception_class']} precision "
-              f"{dem['precision']:.3f} < {dem['threshold']} (n={dem['n_acted']})")
-        matrix = P.demote(P.MATRIX_V1_0, dem["exception_class"],
-                          reason=f"precision {dem['precision']:.3f} on n={dem['n_acted']} "
-                                 f"below the {dem['threshold']} pilot threshold")
-        version = "v1.2"
-        res2, _ = E.run_arms(ev, mock=MOCK, matrix=matrix, policy_version=version,
-                      events=source_events)
-        given_up = int((res["C_acted"] & (res["exception_class_derived"]
-                                          == dem["exception_class"])).sum())
-        log("demoted_class", dem["exception_class"], 4)
-        log("demoted_class_precision", dem["precision"], 4)
-        log("automated_resolutions_given_up", given_up, 4)
-        with open("docs/decision_rights.md", "w") as fh:
-            fh.write(P.matrix_to_markdown(matrix, version) +
-                     f"\n\n_Data source: {C.stamp()}_\n")
-    else:
-        print("\n  No class below threshold. Do NOT manufacture a demotion — "
-              "report where the boundary sits instead (see sensitivity curve).")
-        log("demotion_found", False, 4)
-
-    sens = E.sensitivity_curve(res)
-    sens.to_csv("outputs/threshold_sensitivity.csv", index=False)
-    print("\n" + sens.to_string(index=False))
+    hr("STAGE 4 — Recommendation quality and human routing")
+    quality = E.precision_by_class(res)
+    print(quality.to_string(index=False))
+    quality.to_csv("outputs/recommendation_quality_by_class.csv", index=False)
+    log("agent_recommendation_accuracy", round(float(res["B_correct"].mean()), 4), 4)
+    log("human_review_rate", round(float(res["C_human_review"].mean()), 4), 4)
+    log("escalation_rate", round(float((res["C_decision"] == P.ESCALATE).mean()), 4), 4)
 
     dis = E.disagreement_sample(res)
     dis.to_csv("outputs/disagreement_sample.csv", index=False)
@@ -234,6 +209,7 @@ def main():
     for k, v in buckets.items():
         log(f"bucket_{k}_pct", round(100 * v, 2), 4)
     res.to_csv("outputs/case_results.csv", index=False)
+    res.to_csv("outputs/case_results_v13.csv", index=False)
 
     # ---------------------------------------------------------------- STAGE 5
     hr("STAGE 5 — Findings log")
@@ -248,7 +224,7 @@ def main():
             fh.write(f"| {r['stage']} | `{r['metric']}` | {r['value']} |\n")
 
     # sample case packets — the human-facing deliverable, incl. counterparty routing
-    box = ToolBox(ev)
+    box = ToolBox(ev, events=source_events)
     samples = []
     for cls in [L.PRICE_OVER_TOL, L.QTY_VARIANCE, L.DUPLICATE, L.SEQUENCE_VIOLATION]:
         sub = ev[ev["exception_class"] == cls]
@@ -258,13 +234,16 @@ def main():
         a, tj = AG.investigate(row["case_id"], box, mock=MOCK)
         a["_tools"] = tj
         rr = R.evaluate_case(row)
+        mismatch = EV.exposure_contradictions(a.get("exposure_eur"), row["exposure_eur"])
         ev = EV.evaluate_evidence(a.get("exception_type") or cls,
-                      a.get("_tool_outputs", {}), rr.near_miss)
+                  a.get("_tool_outputs", {}), rr.near_miss,
+                  additional_contradictions=mismatch)
         pol = P.decide(row["case_id"], a.get("exception_type") or cls, row["exposure_eur"],
                        ev["evidence_level"], rr.near_miss,
                    missing_sources=ev["missing_sources"],
                    contradictions=ev["contradictions"],
-                       matrix=matrix, policy_version=version)
+                   confidence=a.get("confidence"),
+                   recommendation=a.get("recommendation"))
         samples.append(CP.render_text(CP.build(row, a, pol, rr.trace)))
     if samples:
         with open("outputs/case_packets_sample.txt", "w") as fh:
@@ -272,7 +251,7 @@ def main():
         log("case_packets_generated", len(samples), 5)
 
     hr("STAGE 5 — Business case")
-    V.run(res, sens)
+    V.run(res)
 
     print("\nOutputs:")
     for p in sorted(os.listdir("outputs")):

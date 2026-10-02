@@ -101,13 +101,16 @@ def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, even
         trajectories[cid] = traj
 
         agent_exposure = agent_out.get("exposure_eur")
+        agent_value_contradictions = EV.exposure_contradictions(
+            agent_exposure, r["exposure_eur"])
         pol = P.decide(
             cid,
             agent_out.get("exception_type") or r["exception_class"],
-            agent_exposure,
+            r["exposure_eur"],
             evidence_level=(ev := EV.evaluate_evidence(
                 agent_out.get("exception_type") or r["exception_class"],
-                agent_out.get("_tool_outputs", {}), bool(rr["near_miss"])))['evidence_level'],
+                agent_out.get("_tool_outputs", {}), bool(rr["near_miss"]),
+                additional_contradictions=agent_value_contradictions))['evidence_level'],
             near_miss=bool(rr["near_miss"]),
             missing_sources=ev["missing_sources"],
             contradictions=ev["contradictions"],
@@ -133,16 +136,14 @@ def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, even
             "B_exception_type": agent_out.get("exception_type"),
             "B_prediction": agent_out.get("recommendation"),
             "B_confidence": agent_out.get("confidence"),
-            "C_agent_exposure_eur": agent_exposure,
+            "B_exposure_eur": agent_exposure,
             "evidence_level": ev["evidence_level"],
             "missing_sources": "|".join(ev["missing_sources"]),
             "contradictions": "|".join(ev["contradictions"]),
             "B_correct": agent_out.get("recommendation") == r["outcome_label"],
             # Arm C
             "C_decision": pol.decision,
-            "C_acted": pol.decision == P.AUTO_RESOLVE,
-            "C_correct_when_acted": (pol.decision == P.AUTO_RESOLVE
-                                     and agent_out.get("recommendation") == r["outcome_label"]),
+            "C_human_review": pol.decision == P.HUMAN_APPROVAL,
             "near_miss": bool(rr["near_miss"]),
             "policy_version": pol.policy_version,
             "routed_to": pol.routed_to,
@@ -165,98 +166,21 @@ def run_arms(ev, mock=True, verbose=True, matrix=None, policy_version=None, even
 def arm_scores(res):
     a_cov = res["A_confident"].mean()
     a_acc = res.loc[res["A_confident"], "A_correct"].mean() if res["A_confident"].any() else np.nan
-    acted = res["C_acted"]
     return {
         "n_cases": int(len(res)),
         "arm_A_coverage": round(float(a_cov), 4),
         "arm_A_accuracy_on_covered": round(float(a_acc), 4) if not np.isnan(a_acc) else None,
         "arm_A_accuracy_overall": round(float(res["A_correct"].mean()), 4),
         "arm_B_accuracy": round(float(res["B_correct"].mean()), 4),
-        "arm_C_automation_rate": round(float(acted.mean()), 4),
-        "arm_C_precision_on_acted": (round(float(res.loc[acted, "C_correct_when_acted"].mean()), 4)
-                                     if acted.any() else None),
-        "arm_C_false_automation_rate": (round(float(1 - res.loc[acted, "C_correct_when_acted"].mean()), 4)
-                                        if acted.any() else None),
+        "arm_C_human_review_rate": round(float(res["C_human_review"].mean()), 4),
         "arm_C_escalation_rate": round(float((res["C_decision"] == P.ESCALATE).mean()), 4),
-        "arm_C_approval_rate": round(float((res["C_decision"] == P.HUMAN_APPROVAL).mean()), 4),
     }
 
 
 def precision_by_class(res):
-    acted = res[res["C_acted"]]
-    if acted.empty:
-        return pd.DataFrame(columns=["exception_class", "n_acted", "precision"])
-    g = acted.groupby("exception_class_derived")["C_correct_when_acted"]
-    out = pd.DataFrame({"n_acted": g.size(), "precision": g.mean()}).reset_index()
-    return out.rename(columns={"exception_class_derived": "exception_class"})
-
-
-def find_demotion(prec, threshold=None, min_n=10):
-    """
-    Stage 4's primary story. Returns the class to demote, or None.
-    If nothing falls below threshold, do NOT manufacture a demotion — report
-    where the boundary sits instead (see sensitivity_curve).
-    """
-    threshold = threshold or C.PRECISION_THRESHOLD
-    cand = prec[(prec["precision"] < threshold) & (prec["n_acted"] >= min_n)]
-    if cand.empty:
-        return None
-    row = cand.sort_values("precision").iloc[0]
-    return {"exception_class": row["exception_class"],
-            "precision": round(float(row["precision"]), 4),
-            "n_acted": int(row["n_acted"]), "threshold": threshold}
-
-
-def candidate_precision(res):
-    """
-    Precision the agent WOULD achieve on each exception class if it were
-    permitted to act — independent of what the current matrix allows.
-
-    This is the input to the sensitivity curve. Sweeping only over classes the
-    matrix already permits produces a flat, useless curve: the question a CFO
-    is actually asking is "which classes could we let through, and at what
-    precision", not "how do the ones we already trust perform".
-    """
     g = res.groupby("exception_class_derived")["B_correct"]
-    out = pd.DataFrame({"n_cases": g.size(), "precision": g.mean()}).reset_index()
+    out = pd.DataFrame({"n_cases": g.size(), "recommendation_accuracy": g.mean()}).reset_index()
     return out.rename(columns={"exception_class_derived": "exception_class"})
-
-
-def sensitivity_curve(res, sweep=None, min_n=10):
-    """
-    Automation rate vs precision across candidate thresholds. The best single
-    exhibit in the project: it shows a trade-off, not a result. It tells a CFO
-    exactly how much automation they give up per point of precision demanded.
-
-    At each threshold, every class whose achieved precision meets it becomes
-    eligible for autonomous action; classes below it fall back to human
-    authority. Classes with n below min_n are never permitted regardless of
-    precision — thin samples do not buy autonomy.
-    """
-    sweep = sweep or C.SENSITIVITY_SWEEP
-    cand = candidate_precision(res)
-    rows = []
-    for t in sweep:
-        ok = cand[(cand["precision"] >= t) & (cand["n_cases"] >= min_n)]
-        allowed = set(ok["exception_class"])
-        elig = res["exception_class_derived"].isin(allowed)
-        # value cap still binds: autonomy is class AND value, never class alone
-        within_cap = res["exposure_eur"].fillna(0) <= C.AUTO_RESOLVE_VALUE_CAP
-        acted = elig & within_cap
-        below = cand[(cand["n_cases"] >= min_n) & (cand["precision"] < t)]
-        rows.append({
-            "precision_threshold": t,
-            "classes_permitted": len(allowed),
-            "permitted_classes": "|".join(sorted(allowed)),
-            "automation_rate": round(float(acted.mean()), 4),
-            "n_automated": int(acted.sum()),
-            "realised_precision": (round(float(res.loc[acted, "B_correct"].mean()), 4)
-                                   if acted.any() else None),
-            "value_automated_eur": round(float(res.loc[acted, "exposure_eur"].sum()), 2),
-            "binding_constraint": (below.sort_values("precision", ascending=False)
-                                   ["exception_class"].iloc[0] if not below.empty else None),
-        })
-    return pd.DataFrame(rows)
 
 
 def tool_metrics(trajectories, expected):

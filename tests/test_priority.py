@@ -43,14 +43,15 @@ def test_queue_order_and_overdue_driver():
     assert queue.set_index("case_id").loc["A", "priority_driver"] == "overdue"
 
 
-def test_auto_resolved_and_closed_cases_excluded():
+def test_open_human_cases_are_queued_and_closed_cases_excluded():
     intervals = block_intervals(_log())
     medians = class_medians(intervals, LABELS, ["e1"])
     cases = pd.DataFrame({"case_id": ["A", "h1"], "owner": ["proc", "proc"],
                           "exception_type": ["SEQ", "PV"], "exposure_eur": [1, 1],
-                          "decision": ["AUTO_RESOLVE", "ESCALATE"],
+                          "decision": ["HUMAN_APPROVAL", "ESCALATE"],
                           "evidence_level": ["STRONG", "WEAK"]})
-    assert build_queue(cases, intervals, medians, "2018-06-10").empty
+    queue = build_queue(cases, intervals, medians, "2018-06-10")
+    assert list(queue.case_id) == ["A"]
 
 
 def test_reference_table_roundtrip(tmp_path):

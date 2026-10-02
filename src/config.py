@@ -111,13 +111,10 @@ BATCH_USER_PATTERNS = ["batch", "system", "auto", "nonhuman", "_wf"]
 # docs/decision_rights.md and they are read by both engines.
 PRICE_TOLERANCE_PCT = 2.0       # SAP tolerance key analogue, price variance
 QTY_TOLERANCE_PCT = 5.0         # quantity variance
-AUTO_RESOLVE_VALUE_CAP = 5000.0    # EUR — above this, never auto-resolve
 APPROVAL_VALUE_CAP = 50000.0       # EUR — above this, always escalate
 NEAR_MISS_BAND_PCT = 0.5        # within this of a threshold = near_miss flag
 
-POLICY_VERSION = "v1.2"
-PRECISION_THRESHOLD = 0.95      # pilot design choice, NOT an industry standard
-SENSITIVITY_SWEEP = [0.90, 0.93, 0.95, 0.97]
+POLICY_VERSION = "v1.3"
 
 # -------------------------------------------------------------------- eval set
 EVAL_SET_SIZE = 200
@@ -127,22 +124,12 @@ RANDOM_SEED = 42
 # Fill from an opened source before reporting. Placeholders are flagged loudly.
 LOADED_HOURLY_COST_EUR = 25.59      # Dutch AP Analyst gross hourly benchmark; burden not included
 # Source: https://www.salaryexpert.com/salary/job/accounts-payable-analyst/netherlands
-EARLY_PAY_DISCOUNT_PCT = None       # e.g. 2.0 — from the log's payment terms if present
+EARLY_PAY_DISCOUNT_PCT = None       # ASSUMPTION only; not observed or valued in this study
 INFERENCE_COST_PER_CASE_EUR = None  # measured in Stage 3, not assumed
 
-# --- assumptions for the value model. All three are ASSUMPTIONS, not evidence.
-# The event log records system events only; it does not capture how long a human
-# spent investigating. Leaving these as None is correct until each has a source
-# you have actually opened — the value model refuses to run while any is unset.
-MINUTES_PER_INVESTIGATION = 30      # base case from Nexus AP's published 15–45 min range
-MINUTES_SENSITIVITY = [15, 30, 45]  # published range, retained rather than collapsed
-# Source: https://www.nexusap.com/research/invoice-processing-time-benchmarks
-FALSE_AUTOMATION_SEVERITY = 0.15    # judgment: 15% of exposure at risk in a wrong release
-# Judgment only; no benchmark is claimed. Sensitivity bounds the assumption.
-FALSE_AUTOMATION_SEVERITY_SENSITIVITY = [0.10, 0.15, 0.25]
-                                    # risk when a payment clears wrongly, plus the
-                                    # cost of the control failure. Sensitivity-test
-                                    # this; it is the softest number in the model.
+# The log contains no timed human reviews. Measure this in a shadow pilot before
+# claiming capacity savings; no avoided-minutes estimate is currently asserted.
+MINUTES_SAVED_PER_CASE = None
 
 
 def stamp():

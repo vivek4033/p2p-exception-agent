@@ -46,7 +46,7 @@ recommendation.
 Evidence authority, highest first:
   1. ERP transaction data (PO, goods receipt, invoice) — factual
   2. Company policy (tolerances, approval limits) — decision authority
-  3. Internal history (vendor patterns) — supporting evidence only
+    3. Internal history (including same-class supplier recurrence) — supporting evidence only
 
 When you have enough evidence, reply with ONLY a JSON object, no prose and no \
 markdown fences:
@@ -60,8 +60,8 @@ markdown fences:
  "reasoning": one or two sentences}}
 
 The recommendation is the proposed resolution outcome, never a routing choice. \\
-Do not choose AUTO_RESOLVE or HUMAN_APPROVAL; Arm C owns that decision using \\
-policy, confidence, evidence, and exposure."""
+Arm C owns routing using policy, confidence, evidence, and ERP exposure. All \\
+non-escalated cases require human disposition."""
 
 
 def _cache_key(case_id, salt=""):
@@ -70,11 +70,7 @@ def _cache_key(case_id, salt=""):
 
 
 def _normalize_confidence(value):
-    if isinstance(value, str):
-        normalized = value.strip().upper()
-        if normalized in L.CONFIDENCE_LEVELS:
-            return normalized
-    return L.CONFIDENCE_WEAK
+    return L.normalize_confidence(value)
 
 
 def _extract_json(text):

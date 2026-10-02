@@ -85,7 +85,8 @@ def main():
     print("\nKey files:")
     for p in ("docs/findings_log.md", "docs/activity_inventory.md",
               "docs/decision_rights.md", "outputs/case_packets_sample.txt",
-              "outputs/threshold_sensitivity.csv", "outputs/disagreement_sample.csv"):
+              "outputs/recommendation_quality_by_class.csv",
+              "outputs/human_queue.csv", "outputs/disagreement_sample.csv"):
         if os.path.exists(p):
             print(f"  {p}")
 
